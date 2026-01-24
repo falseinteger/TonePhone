@@ -1,0 +1,64 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+
+# Xcode build
+build/
+DerivedData/
+*.build/
+*.xcarchive
+*.ipa
+
+# Xcode workspace settings (local)
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+
+# CocoaPods (if used later)
+Pods/
+
+# Carthage (if used later)
+Carthage/Build/
+Carthage/Checkouts/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# TonePhone build output
+output/
+*.xcframework
+
+# OpenSSL builds (generated)
+core/openssl/
+
+# Logs and diagnostics
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Secrets (should never exist, but just in case)
+*.pem
+*.p12
+*.key
+secrets/
+credentials/
