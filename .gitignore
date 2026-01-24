@@ -62,3 +62,6 @@ logs/
 *.key
 secrets/
 credentials/
+
+# MD files
+TASKS.MD
