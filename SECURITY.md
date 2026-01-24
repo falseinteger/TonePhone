@@ -8,9 +8,13 @@ If you discover a security vulnerability in TonePhone, please report it privatel
 
 ### Contact
 
-Email: **security@example.com**
+Use GitHub's private security advisory feature:
 
-*(Replace with actual contact before publishing)*
+1. Go to https://github.com/falseinteger/TonePhone/security/advisories
+2. Click "New draft security advisory"
+3. Fill in the details
+
+This keeps the report private until a fix is ready.
 
 ### What to Include
 
