@@ -23,6 +23,7 @@ set -euo pipefail
 
 # Configuration
 OPENSSL_VERSION="3.4.1"
+# SHA256 from: https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz.sha256
 OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
 
 # Deployment targets
@@ -100,8 +101,13 @@ download_openssl() {
     fi
 
     log_info "Downloading OpenSSL $OPENSSL_VERSION..."
-    curl -L -o "$TARBALL" \
-        "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"
+    if ! curl --fail -L -o "$TARBALL" \
+        "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"; then
+        log_error "Failed to download OpenSSL $OPENSSL_VERSION"
+        log_error "Check your network connection and try again"
+        rm -f "$TARBALL"
+        exit 1
+    fi
 
     log_info "Verifying checksum..."
     local actual_sha256
@@ -189,11 +195,20 @@ build_platform() {
     # Configure
     ./Configure "${configure_args[@]}"
 
-    # Build
-    make -j"$(sysctl -n hw.ncpu)"
+    # Build (redirect output to log file, show on failure)
+    local log_file="$BUILD_DIR/build-$name.log"
+    if ! make -j"$(sysctl -n hw.ncpu)" > "$log_file" 2>&1; then
+        log_error "[$name] Build failed. See log: $log_file"
+        tail -50 "$log_file"
+        exit 1
+    fi
 
     # Install (only libraries and headers)
-    make install_sw
+    if ! make install_sw >> "$log_file" 2>&1; then
+        log_error "[$name] Install failed. See log: $log_file"
+        tail -50 "$log_file"
+        exit 1
+    fi
 
     cd "$PROJECT_ROOT"
 
