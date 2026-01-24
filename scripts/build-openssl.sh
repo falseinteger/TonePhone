@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Configuration
 OPENSSL_VERSION="3.4.1"
-# SHA256 from: https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz.sha256
+# SHA256 from OpenSSL release: https://github.com/openssl/openssl/releases/tag/openssl-3.4.1
 OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
 
 # Deployment targets
@@ -177,23 +177,18 @@ build_platform() {
         "--prefix=$install_dir"
     )
 
-    # Add min version flags
+    # Build CFLAGS with deployment target and arch flags
+    local cflags=""
     if [[ "$sdk" == "macosx" ]]; then
-        configure_args+=("-mmacosx-version-min=$MACOS_MIN_VERSION")
+        cflags="-mmacosx-version-min=$MACOS_MIN_VERSION"
     elif [[ "$sdk" == "iphoneos" ]]; then
-        configure_args+=("-mios-version-min=$IOS_MIN_VERSION")
+        cflags="-mios-version-min=$IOS_MIN_VERSION"
     elif [[ "$sdk" == "iphonesimulator" ]]; then
-        configure_args+=("-mios-simulator-version-min=$IOS_MIN_VERSION")
-        # For simulator, we need to specify the arch
-        if [[ "$arch" == "arm64" ]]; then
-            configure_args+=("-arch" "arm64")
-        else
-            configure_args+=("-arch" "x86_64")
-        fi
+        cflags="-mios-simulator-version-min=$IOS_MIN_VERSION -arch $arch"
     fi
 
-    # Configure
-    ./Configure "${configure_args[@]}"
+    # Configure with CFLAGS
+    CFLAGS="$cflags" ./Configure "${configure_args[@]}"
 
     # Build (redirect output to log file, show on failure)
     local log_file="$BUILD_DIR/build-$name.log"
