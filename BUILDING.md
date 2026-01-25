@@ -432,8 +432,8 @@ copy_headers() {
     cp -R "$OUTPUT_DIR/ios-sim-arm64/include" "$OUTPUT_DIR/ios-sim-fat/"
 }
 
-# Libraries to package
-LIBS=("libre.a" "librem.a" "libbaresip.a")
+# Libraries to package (librem is built into libre via USE_REM=ON)
+LIBS=("libre.a" "libbaresip.a")
 
 echo "=== Creating fat libraries ==="
 
@@ -446,7 +446,7 @@ copy_headers
 
 echo "=== Creating XCFrameworks ==="
 
-# libre.xcframework
+# libre.xcframework (includes rem functionality)
 xcodebuild -create-xcframework \
     -library "$OUTPUT_DIR/macos-fat/lib/libre.a" \
     -headers "$OUTPUT_DIR/macos-fat/include" \
@@ -455,16 +455,6 @@ xcodebuild -create-xcframework \
     -library "$OUTPUT_DIR/ios-sim-fat/lib/libre.a" \
     -headers "$OUTPUT_DIR/ios-sim-fat/include" \
     -output "$XCFW_DIR/libre.xcframework"
-
-# librem.xcframework
-xcodebuild -create-xcframework \
-    -library "$OUTPUT_DIR/macos-fat/lib/librem.a" \
-    -headers "$OUTPUT_DIR/macos-fat/include" \
-    -library "$OUTPUT_DIR/ios-arm64/lib/librem.a" \
-    -headers "$OUTPUT_DIR/ios-arm64/include" \
-    -library "$OUTPUT_DIR/ios-sim-fat/lib/librem.a" \
-    -headers "$OUTPUT_DIR/ios-sim-fat/include" \
-    -output "$XCFW_DIR/librem.xcframework"
 
 # libbaresip.xcframework
 xcodebuild -create-xcframework \
@@ -489,10 +479,9 @@ chmod +x scripts/package-xcframework.sh
 
 Output:
 
-```
+```text
 output/xcframeworks/
 ├── libre.xcframework
-├── librem.xcframework
 └── libbaresip.xcframework
 ```
 
@@ -520,7 +509,6 @@ In **Build Settings** → **Header Search Paths**, add:
 
 ```
 $(PROJECT_DIR)/../output/xcframeworks/libre.xcframework/*/Headers
-$(PROJECT_DIR)/../output/xcframeworks/librem.xcframework/*/Headers
 $(PROJECT_DIR)/../output/xcframeworks/libbaresip.xcframework/*/Headers
 ```
 
