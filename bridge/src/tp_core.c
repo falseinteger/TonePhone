@@ -247,7 +247,8 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     /* Initialize event callback system */
     tp_error_t tp_err = tp_events_init();
     if (tp_err != TP_OK) {
-        warning("tp_core: tp_events_init failed\n");
+        warning("tp_core: tp_events_init failed: %s (%d)\n",
+                tp_error_string(tp_err), tp_err);
         module_app_unload();
         ua_close();
         baresip_close();
