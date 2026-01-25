@@ -302,7 +302,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/include";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../../bridge/include",
+					"$(PROJECT_DIR)/../../output/macos-fat/include",
+				);
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";
@@ -335,7 +338,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/include";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../../bridge/include",
+					"$(PROJECT_DIR)/../../output/macos-fat/include",
+				);
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";

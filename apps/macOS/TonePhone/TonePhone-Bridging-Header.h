@@ -9,6 +9,6 @@
 #define TonePhone_Bridging_Header_h
 
 // Expose only the stable bridge C API to Swift
-#include "tp_bridge.h"
+#include "tp_bridge.h"  // Located at bridge/include/tp_bridge.h
 
 #endif /* TonePhone_Bridging_Header_h */
