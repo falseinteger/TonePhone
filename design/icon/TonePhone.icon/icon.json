@@ -22,7 +22,7 @@
           "blend-mode" : "normal",
           "glass" : true,
           "hidden" : false,
-          "image-name" : "AppIcon.png",
+          "image-name" : "Assets/AppIcon.png",
           "name" : "AppIcon"
         }
       ],

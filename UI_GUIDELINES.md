@@ -80,8 +80,8 @@ Accessibility is mandatory, not optional:
 
 ### Master Asset
 
-- Single master icon: 1024×1024 PNG
-- Same asset used for iOS and macOS
+- Single master icon: 1024×1024 PNG used as the source
+- Platform-specific sizes are derived from the master for iOS and macOS
 - No rounded corners baked in (system applies them)
 - No shadows baked in
 - No effects baked in
