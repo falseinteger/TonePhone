@@ -75,6 +75,8 @@ Native UI for each platform:
 
 Apps are thin. They display state, accept input, and call bridge APIs. No SIP logic lives here.
 
+**UI Rules:** All UI code must follow [UI_GUIDELINES.md](UI_GUIDELINES.md). Apple Human Interface Guidelines take precedence over custom design ideas. Use native system controls wherever possible.
+
 ---
 
 ## Repository Layout

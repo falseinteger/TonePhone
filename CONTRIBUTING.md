@@ -71,6 +71,7 @@ Documentation improvements are always welcome:
 - Prefer value types where appropriate
 - Use `async/await` for asynchronous code
 - Keep UI code in the UI layer, SIP logic in the bridge
+- **All UI contributions must follow [UI_GUIDELINES.md](UI_GUIDELINES.md)**
 
 ### C (Bridge Layer)
 
