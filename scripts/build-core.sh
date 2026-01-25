@@ -23,6 +23,9 @@
 #   - pkg-config
 #   - OpenSSL built via build-openssl.sh
 #
+# Optional:
+#   - Opus built via build-opus.sh (enables opus codec module)
+#
 
 set -euo pipefail
 
@@ -48,9 +51,11 @@ PLATFORMS=(
 )
 
 # Baresip modules to enable (semicolon-separated for CMake)
-# Note: opus module requires libopus to be cross-compiled for each platform.
-# For now, opus is excluded. Create build-opus.sh (similar to build-openssl.sh) to enable it.
-BARESIP_MODULES="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
+# Base modules (always enabled)
+BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
+# Opus module (enabled automatically if libopus is available)
+# To build libopus, run: ./scripts/build-opus.sh
+OPUS_AVAILABLE=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -123,6 +128,24 @@ check_prerequisites() {
             exit 1
         fi
     done
+
+    # Check if Opus is available (optional)
+    local opus_found=true
+    for entry in "${PLATFORMS[@]}"; do
+        IFS=':' read -r platform _ _ <<< "$entry"
+        local opus_path="$CORE_DIR/opus/$platform"
+        if [[ ! -f "$opus_path/lib/libopus.a" ]] || [[ ! -f "$opus_path/include/opus/opus.h" ]]; then
+            opus_found=false
+            break
+        fi
+    done
+
+    if [[ "$opus_found" == "true" ]]; then
+        OPUS_AVAILABLE=true
+        log_info "Opus codec: ENABLED (libopus found)"
+    else
+        log_warn "Opus codec: DISABLED (run ./scripts/build-opus.sh to enable)"
+    fi
 
     log_info "Prerequisites OK"
 }
@@ -205,6 +228,7 @@ build_baresip() {
     local build_path="$BUILD_DIR/$platform/baresip"
     local install_path="$OUTPUT_DIR/$platform"
     local openssl_path="$CORE_DIR/openssl/$platform"
+    local opus_path="$CORE_DIR/opus/$platform"
 
     # Check if already built (idempotent)
     if [[ -f "$install_path/lib/libbaresip.a" ]] && [[ -f "$install_path/include/baresip.h" ]]; then
@@ -229,25 +253,44 @@ build_baresip() {
 
     local log_file="$BUILD_DIR/build-baresip-$platform.log"
 
+    # Build module list (add opus if available)
+    local modules="$BARESIP_MODULES_BASE"
+    if [[ "$OPUS_AVAILABLE" == "true" ]]; then
+        modules+=";opus"
+    fi
+
+    # Build CMake arguments
+    local cmake_args=(
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_SYSTEM_NAME="$system_name"
+        -DCMAKE_OSX_ARCHITECTURES="$arch"
+        -DCMAKE_OSX_SYSROOT="$sdk_path"
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="$deployment_target"
+        -DCMAKE_INSTALL_PREFIX="$install_path"
+        -DCMAKE_PREFIX_PATH="$install_path"
+        -Dre_DIR="$install_path/lib/cmake/re"
+        -DRE_INCLUDE_DIR="$install_path/include/re"
+        -DRE_LIBRARY="$install_path/lib/libre.a"
+        -DOPENSSL_ROOT_DIR="$openssl_path"
+        -DOPENSSL_INCLUDE_DIR="$openssl_path/include"
+        -DOPENSSL_SSL_LIBRARY="$openssl_path/lib/libssl.a"
+        -DOPENSSL_CRYPTO_LIBRARY="$openssl_path/lib/libcrypto.a"
+        -DOPENSSL_USE_STATIC_LIBS=ON
+        -DSTATIC=ON
+        -DMODULES="$modules"
+        -DCMAKE_MACOSX_BUNDLE=OFF
+    )
+
+    # Add Opus paths if available
+    if [[ "$OPUS_AVAILABLE" == "true" ]]; then
+        cmake_args+=(
+            -DOPUS_INCLUDE_DIR="$opus_path/include"
+            -DOPUS_LIBRARY="$opus_path/lib/libopus.a"
+        )
+    fi
+
     if ! cmake -S "$CORE_DIR/baresip" -B "$build_path" -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_SYSTEM_NAME="$system_name" \
-        -DCMAKE_OSX_ARCHITECTURES="$arch" \
-        -DCMAKE_OSX_SYSROOT="$sdk_path" \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET="$deployment_target" \
-        -DCMAKE_INSTALL_PREFIX="$install_path" \
-        -DCMAKE_PREFIX_PATH="$install_path" \
-        -Dre_DIR="$install_path/lib/cmake/re" \
-        -DRE_INCLUDE_DIR="$install_path/include/re" \
-        -DRE_LIBRARY="$install_path/lib/libre.a" \
-        -DOPENSSL_ROOT_DIR="$openssl_path" \
-        -DOPENSSL_INCLUDE_DIR="$openssl_path/include" \
-        -DOPENSSL_SSL_LIBRARY="$openssl_path/lib/libssl.a" \
-        -DOPENSSL_CRYPTO_LIBRARY="$openssl_path/lib/libcrypto.a" \
-        -DOPENSSL_USE_STATIC_LIBS=ON \
-        -DSTATIC=ON \
-        -DMODULES="$BARESIP_MODULES" \
-        -DCMAKE_MACOSX_BUNDLE=OFF \
+        "${cmake_args[@]}" \
         > "$log_file" 2>&1; then
         log_error "[$platform] baresip configure failed. See log: $log_file"
         tail -30 "$log_file"

@@ -65,3 +65,6 @@ credentials/
 
 # MD files
 TASKS.MD
+
+# Opus builds (generated)
+core/opus/
