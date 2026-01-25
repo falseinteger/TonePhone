@@ -31,6 +31,10 @@ TonePhone aims to be:
 
 **Early development.** Core architecture is defined, build system is in place, UI is in progress.
 
+## Design Philosophy
+
+TonePhone UI follows [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) for both macOS and iOS. Native system controls are preferred over custom implementations. See [UI_GUIDELINES.md](UI_GUIDELINES.md) for detailed UI/UX rules.
+
 The project is usable for development and testing. Not yet ready for general use.
 
 ## Architecture

@@ -69,6 +69,7 @@ Key API groups:
 - UI never touches SIP internals
 - Logs must be human-readable
 - Debugging must be easy
+- **All UI-related changes must comply with [UI_GUIDELINES.md](UI_GUIDELINES.md) and Apple HIG**
 
 ## Development Principles
 
@@ -116,6 +117,7 @@ Enabled modules: `audiounit`, `opus`, `g711`, `stun`, `turn`, `ice`, `srtp`, `dt
 - `BUILDING.md` — Build scripts and Xcode integration
 - `ROADMAP.md` — Feature parity checklist
 - `CONTRIBUTING.md` — How to contribute
+- `UI_GUIDELINES.md` — UI/UX rules (Apple HIG compliance)
 - `SECURITY.md` — Vulnerability reporting
 - `THIRD_PARTY_LICENSES.md` — Third-party dependency licenses
 
