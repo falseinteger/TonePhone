@@ -253,6 +253,9 @@ struct AccountConfigView: View {
     }
 
     private func saveAccount() {
+        // Clear previous validation error
+        showValidationError = false
+
         let trimmedServer = server.trimmingCharacters(in: .whitespaces)
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
 

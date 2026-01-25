@@ -79,10 +79,12 @@ final class AccountStore {
     private let keychainService = "com.tonephone.accounts"
 
     private init() {
-        let appSupport = FileManager.default.urls(
+        guard let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!
+        ).first else {
+            fatalError("Application Support directory not available")
+        }
 
         let tonePhoneDir = appSupport.appendingPathComponent("TonePhone", isDirectory: true)
 
@@ -212,21 +214,36 @@ final class AccountStore {
 
     private func savePasswordToKeychain(_ password: String, for accountID: UUID) {
         let key = accountID.uuidString
-        let passwordData = password.data(using: .utf8)!
+        guard let passwordData = password.data(using: .utf8) else {
+            print("Failed to encode password as UTF-8")
+            return
+        }
 
-        // Delete existing item first
-        deletePasswordFromKeychain(for: accountID)
-
+        // Query to find existing item
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: key
+        ]
+
+        // Attributes to update
+        let attributes: [String: Any] = [
             kSecValueData as String: passwordData
         ]
 
-        let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
-            print("Failed to save password to Keychain: \(status)")
+        // Try to update existing item first
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+
+        if updateStatus == errSecItemNotFound {
+            // Item doesn't exist, add it
+            var addQuery = query
+            addQuery[kSecValueData as String] = passwordData
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                print("Failed to save password to Keychain: \(addStatus)")
+            }
+        } else if updateStatus != errSecSuccess {
+            print("Failed to update password in Keychain: \(updateStatus)")
         }
     }
 

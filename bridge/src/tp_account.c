@@ -203,7 +203,8 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
         return TP_ERR_INVALID_ARG;
     }
 
-    info("tp_account: creating UA with AOR: %s\n", aor);
+    /* Log without credentials (sip_uri doesn't contain password) */
+    info("tp_account: creating UA for %s\n", config->sip_uri);
     info("tp_account: conf_cur() = %p, conf_config() = %p\n",
          conf_cur(), conf_config());
 
@@ -308,6 +309,8 @@ tp_error_t tp_account_register(tp_account_id_t id)
 {
     int err;
     account_entry_t *entry;
+    struct ua *ua;
+    tp_error_t result = TP_OK;
 
     if (id == TP_INVALID_ID) {
         return TP_ERR_INVALID_ARG;
@@ -326,12 +329,14 @@ tp_error_t tp_account_register(tp_account_id_t id)
         return TP_ERR_INTERNAL;
     }
 
-    struct ua *ua = entry->ua;
+    /* Acquire reference to UA before unlocking to prevent use-after-free */
+    ua = mem_ref(entry->ua);
     pthread_mutex_unlock(&g_mutex);
 
     /* Check if already registered */
     if (ua_isregistered(ua)) {
         info("tp_account: account %u already registered\n", id);
+        mem_deref(ua);
         return TP_OK;
     }
 
@@ -340,10 +345,11 @@ tp_error_t tp_account_register(tp_account_id_t id)
     err = ua_register(ua);
     if (err) {
         warning("tp_account: ua_register failed: %m\n", err);
-        return TP_ERR_REGISTRATION_FAILED;
+        result = TP_ERR_REGISTRATION_FAILED;
     }
 
-    return TP_OK;
+    mem_deref(ua);
+    return result;
 }
 
 tp_error_t tp_account_unregister(tp_account_id_t id)
@@ -368,14 +374,14 @@ tp_error_t tp_account_unregister(tp_account_id_t id)
         return TP_ERR_INTERNAL;
     }
 
-    /* Copy UA pointer and release mutex before calling baresip
-     * to avoid deadlock with event callbacks */
-    ua = entry->ua;
+    /* Acquire reference to UA before unlocking to prevent use-after-free */
+    ua = mem_ref(entry->ua);
     pthread_mutex_unlock(&g_mutex);
 
     info("tp_account: unregistering account %u\n", id);
     ua_unregister(ua);
 
+    mem_deref(ua);
     return TP_OK;
 }
 

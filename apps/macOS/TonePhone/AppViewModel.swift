@@ -256,6 +256,12 @@ final class AppViewModel: ObservableObject {
         // Start registration
         if let password = AccountStore.shared.getPassword(for: autoLoginAccount.id) {
             registerAccountWithCore(autoLoginAccount, password: password)
+        } else {
+            // Password missing - show error and go to account list
+            let accountName = autoLoginAccount.displayName.isEmpty ? autoLoginAccount.username : autoLoginAccount.displayName
+            errorMessage = "Password missing for \(accountName). Please edit the account."
+            connectingAccount = nil
+            currentScreen = .accountList
         }
     }
 
@@ -296,7 +302,9 @@ final class AppViewModel: ObservableObject {
             do {
                 try TonePhoneCore.shared.removeAccount(bridgeID)
             } catch {
+                errorMessage = "Failed to remove account: \(error.localizedDescription)"
                 print("Failed to remove account from core: \(error)")
+                return
             }
             accountIDMapping.removeValue(forKey: id)
             accountStates.removeValue(forKey: bridgeID)
@@ -363,6 +371,13 @@ final class AppViewModel: ObservableObject {
         // Start registration
         if let password = AccountStore.shared.getPassword(for: account.id) {
             registerAccountWithCore(account, password: password)
+        } else {
+            // Password missing - show error and close sheet
+            let accountName = account.displayName.isEmpty ? account.username : account.displayName
+            errorMessage = "Password missing for \(accountName). Please edit the account."
+            connectingAccount = nil
+            isConnectionSheetPresented = false
+            updateRegistrationStatus()
         }
     }
 
