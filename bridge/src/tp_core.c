@@ -6,6 +6,7 @@
  * main loop management, and shutdown.
  */
 
+#include "tp_internal.h"
 #include "tp_bridge.h"
 
 #include <re.h>
@@ -57,8 +58,8 @@ static struct {
     .event_ctx = NULL,
 };
 
-/* Initialize mutex statically */
-static pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* Initialize mutex statically - shared across bridge modules via tp_internal.h */
+pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* =============================================================================
  * Internal Helpers
@@ -243,6 +244,21 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     /* Handle log_path - baresip logging is handled via config */
     (void)log_path;
 
+    /* Initialize event callback system */
+    tp_error_t tp_err = tp_events_init();
+    if (tp_err != TP_OK) {
+        warning("tp_core: tp_events_init failed\n");
+        ua_close();
+        baresip_close();
+        re_thread_async_close();
+        conf_close();
+        libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
+        return tp_err;
+    }
+
     pthread_mutex_lock(&g_mutex);
     g_bridge.state = STATE_INITIALIZED;
     g_bridge.thread_started = false;
@@ -372,6 +388,9 @@ void tp_shutdown(void)
 
     info("tp_core: shutting down...\n");
 
+    /* Unregister event handler first (reverse order of init) */
+    tp_events_close();
+
     /* Shutdown in reverse order of initialization */
     ua_close();
     module_app_unload();
@@ -400,6 +419,16 @@ void tp_set_event_callback(tp_event_callback_t callback, void *ctx)
     pthread_mutex_lock(&g_mutex);
     g_bridge.event_cb = callback;
     g_bridge.event_ctx = ctx;
+    pthread_mutex_unlock(&g_mutex);
+}
+
+void tp_get_event_callback(tp_event_callback_t *cb_out, void **ctx_out)
+{
+    pthread_mutex_lock(&g_mutex);
+    if (cb_out)
+        *cb_out = g_bridge.event_cb;
+    if (ctx_out)
+        *ctx_out = g_bridge.event_ctx;
     pthread_mutex_unlock(&g_mutex);
 }
 
