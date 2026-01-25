@@ -17,6 +17,8 @@
 		F0000001AAAAAAAA00000008 /* libbaresip.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000008 /* libbaresip.a */; };
 		F0000001AAAAAAAA00000009 /* libssl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000009 /* libssl.a */; };
 		F0000001AAAAAAAA0000000A /* libcrypto.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA0000000A /* libcrypto.a */; };
+		F0000001BBBBBBBB00000001 /* tp_core.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000001 /* tp_core.c */; };
+		F0000001BBBBBBBB00000002 /* tp_events.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000002 /* tp_events.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,9 @@
 		F0000002AAAAAAAA00000008 /* libbaresip.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbaresip.a; path = "../../output/macos-fat/lib/libbaresip.a"; sourceTree = "<group>"; };
 		F0000002AAAAAAAA00000009 /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = "../../output/macos-fat/lib/libssl.a"; sourceTree = "<group>"; };
 		F0000002AAAAAAAA0000000A /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = "../../output/macos-fat/lib/libcrypto.a"; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000001 /* tp_core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_core.c; path = ../../bridge/src/tp_core.c; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000002 /* tp_events.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_events.c; path = ../../bridge/src/tp_events.c; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000003 /* tp_internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = tp_internal.h; path = ../../bridge/src/tp_internal.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -62,9 +67,20 @@
 			isa = PBXGroup;
 			children = (
 				AB6132BF2F257E860061E7F9 /* TonePhone */,
+				F0000003BBBBBBBB00000001 /* Bridge */,
 				F0000003AAAAAAAA00000001 /* Frameworks */,
 				AB6132BE2F257E860061E7F9 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		F0000003BBBBBBBB00000001 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				F0000002BBBBBBBB00000001 /* tp_core.c */,
+				F0000002BBBBBBBB00000002 /* tp_events.c */,
+				F0000002BBBBBBBB00000003 /* tp_internal.h */,
+			);
+			name = Bridge;
 			sourceTree = "<group>";
 		};
 		AB6132BE2F257E860061E7F9 /* Products */ = {
@@ -166,6 +182,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0000001BBBBBBBB00000001 /* tp_core.c in Sources */,
+				F0000001BBBBBBBB00000002 /* tp_events.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,7 +322,9 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/../../bridge/include",
+					"$(PROJECT_DIR)/../../bridge/src",
 					"$(PROJECT_DIR)/../../output/macos-fat/include",
+					"$(PROJECT_DIR)/../../output/macos-fat/include/re",
 				);
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
@@ -340,7 +360,9 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/../../bridge/include",
+					"$(PROJECT_DIR)/../../bridge/src",
 					"$(PROJECT_DIR)/../../output/macos-fat/include",
+					"$(PROJECT_DIR)/../../output/macos-fat/include/re",
 				);
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
