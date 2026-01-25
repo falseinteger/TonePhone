@@ -42,8 +42,18 @@
 		F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TonePhoneCore.swift; path = ../../bridge/swift/TonePhoneCore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F0000004CCCCCCCC00000001 /* Exceptions for "TonePhone" folder in "TonePhone" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AB6132BC2F257E860061E7F9 /* TonePhone */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AB6132BF2F257E860061E7F9 /* TonePhone */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = TonePhone; sourceTree = "<group>"; };
+		AB6132BF2F257E860061E7F9 /* TonePhone */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (F0000004CCCCCCCC00000001 /* Exceptions for "TonePhone" folder in "TonePhone" target */, ); explicitFileTypes = {}; explicitFolders = (); path = TonePhone; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
