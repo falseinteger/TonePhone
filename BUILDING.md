@@ -171,7 +171,7 @@ This downloads Opus 1.5.2, verifies the checksum, and builds static libraries fo
 
 Output structure:
 
-```
+```text
 core/opus/
 ├── macos-arm64/
 │   ├── include/opus/
@@ -247,8 +247,8 @@ PLATFORMS=(
     "ios-sim-x86_64:iphonesimulator:x86_64"
 )
 
-# Baresip modules to enable
-BARESIP_MODULES="audiounit;opus;g711;stun;turn;ice;srtp;dtls_srtp;account"
+# Baresip modules to enable (opus added automatically if libopus is found)
+BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
 
 build_libre() {
     local platform=$1

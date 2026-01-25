@@ -80,6 +80,11 @@ check_prerequisites() {
         exit 1
     fi
 
+    if ! command -v make &> /dev/null; then
+        log_error "make not found. Install Xcode Command Line Tools: xcode-select --install"
+        exit 1
+    fi
+
     # Verify required SDKs are available (need full Xcode, not just CLI Tools)
     local required_sdks=("macosx" "iphoneos" "iphonesimulator")
     for sdk in "${required_sdks[@]}"; do
@@ -254,7 +259,8 @@ main() {
     for platform in "${PLATFORMS[@]}"; do
         IFS=':' read -r name _ _ _ <<< "$platform"
         local install_dir="$OPUS_DIR/$name"
-        if [[ -f "$install_dir/lib/libopus.a" ]]; then
+        if [[ -f "$install_dir/lib/libopus.a" ]] && \
+           [[ -f "$install_dir/include/opus/opus.h" ]]; then
             local size
             size=$(du -sh "$install_dir/lib" | awk '{print $1}')
             echo -e "  ${GREEN}✓${NC} $name ($size)"
