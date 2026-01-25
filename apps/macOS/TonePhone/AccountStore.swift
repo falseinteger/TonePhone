@@ -61,6 +61,16 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var sipURI: String {
         "sip:\(username)@\(server)"
     }
+
+    /// Returns initials for avatar display.
+    var initials: String {
+        let name = displayName.isEmpty ? username : displayName
+        let components = name.split(separator: " ")
+        if components.count >= 2 {
+            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
 }
 
 /// Manages persistent storage for SIP accounts.

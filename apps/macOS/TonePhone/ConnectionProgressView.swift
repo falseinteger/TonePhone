@@ -10,7 +10,6 @@ import SwiftUI
 /// Modal sheet displayed during connection attempts.
 struct ConnectionProgressView: View {
     @ObservedObject var viewModel: AppViewModel
-    @Environment(\.dismiss) private var dismiss
     @State private var isAnimating = false
 
     var body: some View {
@@ -130,7 +129,7 @@ struct ConnectionProgressView: View {
                 .frame(width: 56, height: 56)
 
             if let account = viewModel.connectingAccount {
-                Text(initials(for: account))
+                Text(account.initials)
                     .font(.system(size: 20, weight: .medium, design: .rounded))
                     .foregroundColor(.accentColor)
             } else {
@@ -205,14 +204,6 @@ struct ConnectionProgressView: View {
         }
     }
 
-    private func initials(for account: SIPAccount) -> String {
-        let name = account.displayName.isEmpty ? account.username : account.displayName
-        let components = name.split(separator: " ")
-        if components.count >= 2 {
-            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
-        }
-        return String(name.prefix(2)).uppercased()
-    }
 }
 
 #Preview("Connecting") {

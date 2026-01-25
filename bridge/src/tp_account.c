@@ -136,7 +136,7 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
     if (config->outbound_proxy && config->outbound_proxy[0] != '\0') {
         ret = re_snprintf(buf + len, sz - len, ";outbound=\"%s\"",
                          config->outbound_proxy);
-        if (ret < 0)
+        if (ret < 0 || (size_t)ret >= (sz - len))
             return ENOMEM;
         len += ret;
     }
@@ -144,7 +144,7 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
     if (config->auth_user && config->auth_user[0] != '\0') {
         ret = re_snprintf(buf + len, sz - len, ";auth_user=%s",
                          config->auth_user);
-        if (ret < 0)
+        if (ret < 0 || (size_t)ret >= (sz - len))
             return ENOMEM;
         len += ret;
     }
@@ -152,14 +152,14 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
     if (config->transport && config->transport[0] != '\0') {
         ret = re_snprintf(buf + len, sz - len, ";transport=%s",
                          config->transport);
-        if (ret < 0)
+        if (ret < 0 || (size_t)ret >= (sz - len))
             return ENOMEM;
         len += ret;
     }
 
     /* Add registration interval to enable registration */
     ret = re_snprintf(buf + len, sz - len, ";regint=3600");
-    if (ret < 0)
+    if (ret < 0 || (size_t)ret >= (sz - len))
         return ENOMEM;
 
     return 0;

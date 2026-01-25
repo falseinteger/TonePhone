@@ -205,19 +205,10 @@ struct AccountRowView: View {
                 .fill(Color.accentColor.opacity(0.15))
                 .frame(width: 36, height: 36)
 
-            Text(initials)
+            Text(account.initials)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundColor(.accentColor)
         }
-    }
-
-    private var initials: String {
-        let name = account.displayName.isEmpty ? account.username : account.displayName
-        let components = name.split(separator: " ")
-        if components.count >= 2 {
-            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
-        }
-        return String(name.prefix(2)).uppercased()
     }
 }
 
