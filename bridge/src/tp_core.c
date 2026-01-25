@@ -30,10 +30,12 @@
  */
 typedef enum {
     STATE_UNINITIALIZED = 0,
+    STATE_INITIALIZING,
     STATE_INITIALIZED,
     STATE_STARTING,
     STATE_RUNNING,
     STATE_STOPPING,
+    STATE_SHUTTING_DOWN,
 } bridge_state_t;
 
 /**
@@ -67,12 +69,21 @@ static pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 static void post_core_state_event(tp_core_state_t state)
 {
-    if (g_bridge.event_cb) {
+    tp_event_callback_t cb;
+    void *ctx;
+
+    /* Copy callback under lock to avoid race with tp_set_event_callback */
+    pthread_mutex_lock(&g_mutex);
+    cb = g_bridge.event_cb;
+    ctx = g_bridge.event_ctx;
+    pthread_mutex_unlock(&g_mutex);
+
+    if (cb) {
         tp_event_t event = {
             .type = TP_EVENT_CORE_STATE_CHANGED,
             .data.core.state = state,
         };
-        g_bridge.event_cb(&event, g_bridge.event_ctx);
+        cb(&event, ctx);
     }
 }
 
@@ -134,12 +145,17 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         return TP_ERR_ALREADY_INITIALIZED;
     }
 
+    /* Mark as initializing to block concurrent tp_init calls */
+    g_bridge.state = STATE_INITIALIZING;
     pthread_mutex_unlock(&g_mutex);
 
     /* Initialize libre */
     err = libre_init();
     if (err) {
         warning("tp_core: libre_init failed: %m\n", err);
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -149,6 +165,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         if (err) {
             warning("tp_core: conf_path_set failed: %m\n", err);
             libre_close();
+            pthread_mutex_lock(&g_mutex);
+            g_bridge.state = STATE_UNINITIALIZED;
+            pthread_mutex_unlock(&g_mutex);
             return TP_ERR_INVALID_ARG;
         }
     }
@@ -158,6 +177,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     if (err) {
         warning("tp_core: conf_configure failed: %m\n", err);
         libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -167,6 +189,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         warning("tp_core: re_thread_async_init failed: %m\n", err);
         conf_close();
         libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -177,6 +202,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         re_thread_async_close();
         conf_close();
         libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -188,6 +216,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         re_thread_async_close();
         conf_close();
         libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -203,6 +234,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         re_thread_async_close();
         conf_close();
         libre_close();
+        pthread_mutex_lock(&g_mutex);
+        g_bridge.state = STATE_UNINITIALIZED;
+        pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
 
@@ -225,7 +259,8 @@ tp_error_t tp_start(void)
 
     pthread_mutex_lock(&g_mutex);
 
-    if (g_bridge.state == STATE_UNINITIALIZED) {
+    if (g_bridge.state == STATE_UNINITIALIZED ||
+        g_bridge.state == STATE_INITIALIZING) {
         pthread_mutex_unlock(&g_mutex);
         return TP_ERR_NOT_INITIALIZED;
     }
@@ -233,6 +268,11 @@ tp_error_t tp_start(void)
     if (g_bridge.state == STATE_RUNNING || g_bridge.state == STATE_STARTING) {
         pthread_mutex_unlock(&g_mutex);
         return TP_ERR_ALREADY_STARTED;
+    }
+
+    if (g_bridge.state == STATE_SHUTTING_DOWN) {
+        pthread_mutex_unlock(&g_mutex);
+        return TP_ERR_NOT_INITIALIZED;
     }
 
     g_bridge.state = STATE_STARTING;
@@ -266,7 +306,9 @@ tp_error_t tp_stop(void)
 {
     pthread_mutex_lock(&g_mutex);
 
-    if (g_bridge.state == STATE_UNINITIALIZED) {
+    if (g_bridge.state == STATE_UNINITIALIZED ||
+        g_bridge.state == STATE_INITIALIZING ||
+        g_bridge.state == STATE_SHUTTING_DOWN) {
         pthread_mutex_unlock(&g_mutex);
         return TP_ERR_NOT_INITIALIZED;
     }
@@ -310,12 +352,18 @@ tp_error_t tp_stop(void)
 void tp_shutdown(void)
 {
     pthread_mutex_lock(&g_mutex);
-    bridge_state_t current_state = g_bridge.state;
-    pthread_mutex_unlock(&g_mutex);
 
-    if (current_state == STATE_UNINITIALIZED) {
+    /* Already uninitialized or shutting down - nothing to do */
+    if (g_bridge.state == STATE_UNINITIALIZED ||
+        g_bridge.state == STATE_SHUTTING_DOWN) {
+        pthread_mutex_unlock(&g_mutex);
         return;
     }
+
+    bridge_state_t current_state = g_bridge.state;
+    /* Mark as shutting down to block concurrent shutdown calls */
+    g_bridge.state = STATE_SHUTTING_DOWN;
+    pthread_mutex_unlock(&g_mutex);
 
     /* If running, stop first */
     if (current_state == STATE_RUNNING || current_state == STATE_STARTING) {
