@@ -248,6 +248,7 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     tp_error_t tp_err = tp_events_init();
     if (tp_err != TP_OK) {
         warning("tp_core: tp_events_init failed\n");
+        module_app_unload();
         ua_close();
         baresip_close();
         re_thread_async_close();
