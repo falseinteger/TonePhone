@@ -42,7 +42,8 @@ tonephone/
 │   ├── re/                    # libre source (git submodule)
 │   ├── rem/                   # librem source (git submodule)
 │   ├── baresip/               # baresip source (git submodule)
-│   └── openssl/               # OpenSSL builds per platform (created by build)
+│   ├── openssl/               # OpenSSL builds per platform (created by build)
+│   └── opus/                  # Opus builds per platform (optional, created by build)
 ├── build/
 │   ├── macos-arm64/
 │   ├── macos-x86_64/
@@ -55,6 +56,7 @@ tonephone/
 ├── scripts/
 │   ├── build-core.sh          # Main build script
 │   ├── build-openssl.sh       # OpenSSL build helper
+│   ├── build-opus.sh          # Opus codec build helper (optional)
 │   └── package-xcframework.sh # XCFramework packaging
 └── apps/
     ├── macOS/
@@ -85,10 +87,12 @@ TonePhone builds baresip with a minimal, audio-focused module set.
 | Category | Modules |
 |----------|---------|
 | Audio I/O | `audiounit` (macOS/iOS native) |
-| Audio Codecs | `opus`, `g711` |
+| Audio Codecs | `g711`, `opus` (optional, see Opus Setup) |
 | NAT Traversal | `stun`, `turn`, `ice` |
 | Security | `srtp`, `dtls_srtp` |
 | Account | `account` |
+
+**Note:** The `opus` module is only enabled if libopus is built. See [Opus Setup](#opus-setup-optional) below.
 
 ### Disabled / Not Built
 
@@ -153,6 +157,46 @@ Repeat for each architecture with appropriate target:
 
 ---
 
+## Opus Setup (Optional)
+
+The Opus codec provides high-quality audio compression for VoIP. Building libopus is **optional** — if not present, baresip will be built with G.711 only.
+
+### Using the Build Script (Recommended)
+
+```bash
+./scripts/build-opus.sh
+```
+
+This downloads Opus 1.5.2, verifies the checksum, and builds static libraries for all platforms.
+
+Output structure:
+
+```text
+core/opus/
+├── macos-arm64/
+│   ├── include/opus/
+│   └── lib/libopus.a
+├── macos-x86_64/
+│   └── ...
+├── ios-arm64/
+│   └── ...
+├── ios-sim-arm64/
+│   └── ...
+└── ios-sim-x86_64/
+    └── ...
+```
+
+### Verification
+
+After building, `build-core.sh` will automatically detect libopus and enable the `opus` module:
+
+```bash
+./scripts/build-core.sh
+# Should show: "Opus codec: ENABLED (libopus found)"
+```
+
+---
+
 ## Build Strategy
 
 Each library (re, rem, baresip) is built separately for each platform/architecture combination, then combined into fat libraries or XCFrameworks.
@@ -203,8 +247,8 @@ PLATFORMS=(
     "ios-sim-x86_64:iphonesimulator:x86_64"
 )
 
-# Baresip modules to enable
-BARESIP_MODULES="audiounit;opus;g711;stun;turn;ice;srtp;dtls_srtp;account"
+# Baresip modules to enable (opus added automatically if libopus is found)
+BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
 
 build_libre() {
     local platform=$1
