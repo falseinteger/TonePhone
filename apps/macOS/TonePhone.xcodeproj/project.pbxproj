@@ -19,6 +19,7 @@
 		F0000001AAAAAAAA0000000A /* libcrypto.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA0000000A /* libcrypto.a */; };
 		F0000001BBBBBBBB00000001 /* tp_core.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000001 /* tp_core.c */; };
 		F0000001BBBBBBBB00000002 /* tp_events.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000002 /* tp_events.c */; };
+		F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 		F0000002BBBBBBBB00000001 /* tp_core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_core.c; path = ../../bridge/src/tp_core.c; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000002 /* tp_events.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_events.c; path = ../../bridge/src/tp_events.c; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000003 /* tp_internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = tp_internal.h; path = ../../bridge/src/tp_internal.h; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TonePhoneCore.swift; path = ../../bridge/swift/TonePhoneCore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +81,7 @@
 				F0000002BBBBBBBB00000001 /* tp_core.c */,
 				F0000002BBBBBBBB00000002 /* tp_events.c */,
 				F0000002BBBBBBBB00000003 /* tp_internal.h */,
+				F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */,
 			);
 			name = Bridge;
 			sourceTree = "<group>";
@@ -184,6 +187,7 @@
 			files = (
 				F0000001BBBBBBBB00000001 /* tp_core.c in Sources */,
 				F0000001BBBBBBBB00000002 /* tp_events.c in Sources */,
+				F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
