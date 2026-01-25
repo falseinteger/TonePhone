@@ -80,6 +80,15 @@ check_prerequisites() {
         exit 1
     fi
 
+    # Verify required SDKs are available (need full Xcode, not just CLI Tools)
+    local required_sdks=("macosx" "iphoneos" "iphonesimulator")
+    for sdk in "${required_sdks[@]}"; do
+        if ! xcrun --sdk "$sdk" --show-sdk-path &> /dev/null; then
+            log_error "SDK '$sdk' not found. Install full Xcode (not just Command Line Tools)"
+            exit 1
+        fi
+    done
+
     log_info "Prerequisites OK"
 }
 
@@ -143,8 +152,9 @@ build_platform() {
     local install_dir="$OPENSSL_DIR/$name"
     local build_dir="$BUILD_DIR/build-$name"
 
-    # Check if already built
-    if [[ -f "$install_dir/lib/libssl.a" && -f "$install_dir/lib/libcrypto.a" ]]; then
+    # Check if already built (libs and headers must both exist)
+    if [[ -f "$install_dir/lib/libssl.a" && -f "$install_dir/lib/libcrypto.a" && \
+          -f "$install_dir/include/openssl/ssl.h" && -f "$install_dir/include/openssl/opensslv.h" ]]; then
         log_info "[$name] Already built, skipping"
         return 0
     fi
@@ -177,18 +187,18 @@ build_platform() {
         "--prefix=$install_dir"
     )
 
-    # Build CFLAGS with deployment target and arch flags
-    local cflags=""
+    # Build CFLAGS with deployment target and arch flags (preserve user-supplied CFLAGS)
+    local cflags="${CFLAGS:-}"
     if [[ "$sdk" == "macosx" ]]; then
-        cflags="-mmacosx-version-min=$MACOS_MIN_VERSION"
+        cflags+=" -mmacosx-version-min=$MACOS_MIN_VERSION"
     elif [[ "$sdk" == "iphoneos" ]]; then
-        cflags="-mios-version-min=$IOS_MIN_VERSION"
+        cflags+=" -mios-version-min=$IOS_MIN_VERSION"
     elif [[ "$sdk" == "iphonesimulator" ]]; then
-        cflags="-mios-simulator-version-min=$IOS_MIN_VERSION -arch $arch"
+        cflags+=" -mios-simulator-version-min=$IOS_MIN_VERSION -arch $arch"
     fi
 
-    # Configure with CFLAGS
-    CFLAGS="$cflags" ./Configure "${configure_args[@]}"
+    # Configure with CFLAGS (trim leading space)
+    CFLAGS="${cflags# }" ./Configure "${configure_args[@]}"
 
     # Build (redirect output to log file, show on failure)
     local log_file="$BUILD_DIR/build-$name.log"
