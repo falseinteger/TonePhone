@@ -38,7 +38,7 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .accessibilityLabel("Add SIP Account")
             } else {
-                // Show configured account with edit option
+                // Show configured account with edit and connect options
                 if let account = viewModel.accounts.first {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -51,6 +51,17 @@ struct ContentView: View {
 
                         Spacer()
 
+                        // Connect button
+                        Button {
+                            viewModel.connectAccount(account)
+                        } label: {
+                            Text(viewModel.connectButtonTitle)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!viewModel.canConnect)
+                        .accessibilityLabel(viewModel.connectButtonTitle)
+
+                        // Edit button
                         Button {
                             viewModel.showEditAccountSheet(for: account)
                         } label: {

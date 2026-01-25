@@ -76,6 +76,9 @@ final class AppViewModel: ObservableObject {
     /// Error message to display to user.
     @Published var errorMessage: String?
 
+    /// Whether a connection attempt is in progress.
+    @Published private(set) var isConnecting = false
+
     /// Tracked account states by ID.
     private var accountStates: [AccountID: AccountState] = [:]
 
@@ -259,6 +262,64 @@ final class AppViewModel: ObservableObject {
             if let password = AccountStore.shared.getPassword(for: account.id) {
                 registerAccountWithCore(account, password: password)
             }
+        }
+    }
+
+    // MARK: - Connect Button
+
+    /// Title for the connect button based on current state.
+    var connectButtonTitle: String {
+        switch registrationStatus {
+        case .notConfigured:
+            return "Connect"
+        case .registering:
+            return "Connecting..."
+        case .registered:
+            return "Disconnect"
+        case .failed:
+            return "Retry"
+        }
+    }
+
+    /// Whether the connect button should be enabled.
+    var canConnect: Bool {
+        switch registrationStatus {
+        case .registering:
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// Handles connect button tap.
+    /// - Parameter account: The account to connect/disconnect.
+    func connectAccount(_ account: SIPAccount) {
+        switch registrationStatus {
+        case .registered:
+            // Disconnect
+            disconnectAccount(account)
+        case .notConfigured, .failed:
+            // Connect
+            if let password = AccountStore.shared.getPassword(for: account.id) {
+                registerAccountWithCore(account, password: password)
+            }
+        case .registering:
+            // Already connecting, do nothing
+            break
+        }
+    }
+
+    /// Disconnects an account.
+    /// - Parameter account: The account to disconnect.
+    private func disconnectAccount(_ account: SIPAccount) {
+        guard let bridgeID = accountIDMapping[account.id] else { return }
+
+        do {
+            try TonePhoneCore.shared.unregisterAccount(bridgeID)
+            accountStates[bridgeID] = .unregistered
+            updateRegistrationStatus()
+        } catch {
+            errorMessage = "Failed to disconnect: \(error.localizedDescription)"
         }
     }
 }
