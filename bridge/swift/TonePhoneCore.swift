@@ -305,6 +305,7 @@ public final class TonePhoneCore {
             tp_set_event_callback(nil, nil)
             tp_shutdown()
             isInitialized = false
+            coreState = .idle
             throw TonePhoneError(from: startResult)
         }
     }
