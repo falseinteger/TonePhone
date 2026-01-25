@@ -340,6 +340,7 @@ public final class TonePhoneCore {
     ///   - sipURI: The SIP URI (e.g., "sip:user@domain.com")
     ///   - password: The SIP password
     ///   - displayName: Optional display name
+    ///   - transport: Transport protocol ("udp", "tcp", or "tls")
     ///   - registerImmediately: Whether to register immediately after adding
     /// - Returns: The account ID assigned to the new account
     /// - Throws: `TonePhoneError` if adding the account fails
@@ -347,6 +348,7 @@ public final class TonePhoneCore {
         sipURI: String,
         password: String,
         displayName: String? = nil,
+        transport: String? = nil,
         registerImmediately: Bool = true
     ) throws -> AccountID {
         var config = tp_account_config_t()
@@ -362,15 +364,31 @@ public final class TonePhoneCore {
                 config.outbound_proxy = nil
                 config.transport = nil
 
-                if let displayName = displayName {
-                    return try displayName.withCString { displayNamePtr in
-                        config.display_name = displayNamePtr
-                        return try addAccountWithConfig(&config)
+                // Handle optional display name
+                let withDisplayName: (inout tp_account_config_t) throws -> AccountID = { cfg in
+                    if let displayName = displayName {
+                        return try displayName.withCString { displayNamePtr in
+                            cfg.display_name = displayNamePtr
+                            return try self.addAccountWithTransport(&cfg, transport: transport)
+                        }
+                    } else {
+                        return try self.addAccountWithTransport(&cfg, transport: transport)
                     }
-                } else {
-                    return try addAccountWithConfig(&config)
                 }
+
+                return try withDisplayName(&config)
             }
+        }
+    }
+
+    private func addAccountWithTransport(_ config: inout tp_account_config_t, transport: String?) throws -> AccountID {
+        if let transport = transport {
+            return try transport.withCString { transportPtr in
+                config.transport = transportPtr
+                return try addAccountWithConfig(&config)
+            }
+        } else {
+            return try addAccountWithConfig(&config)
         }
     }
 

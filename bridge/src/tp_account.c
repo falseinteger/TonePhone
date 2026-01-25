@@ -119,6 +119,14 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
                          config->auth_user);
         if (ret < 0)
             return ENOMEM;
+        len += ret;
+    }
+
+    if (config->transport && config->transport[0] != '\0') {
+        ret = re_snprintf(buf + len, sz - len, ";transport=%s",
+                         config->transport);
+        if (ret < 0)
+            return ENOMEM;
     }
 
     return 0;

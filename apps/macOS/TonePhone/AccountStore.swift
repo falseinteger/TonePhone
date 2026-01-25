@@ -9,6 +9,18 @@
 import Foundation
 import Security
 
+/// Transport protocol for SIP connections.
+enum SIPTransport: String, Codable, CaseIterable {
+    case udp = "udp"
+    case tcp = "tcp"
+    case tls = "tls"
+
+    /// Human-readable display name.
+    var displayName: String {
+        rawValue.uppercased()
+    }
+}
+
 /// Represents a SIP account configuration.
 struct SIPAccount: Codable, Identifiable, Equatable {
     /// Unique identifier for the account.
@@ -19,6 +31,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var username: String
     /// Display name (optional).
     var displayName: String
+    /// Transport protocol (UDP, TCP, TLS).
+    var transport: SIPTransport
     /// Whether this is the default account.
     var isDefault: Bool
 
@@ -28,12 +42,14 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         server: String = "",
         username: String = "",
         displayName: String = "",
+        transport: SIPTransport = .udp,
         isDefault: Bool = false
     ) {
         self.id = id
         self.server = server
         self.username = username
         self.displayName = displayName
+        self.transport = transport
         self.isDefault = isDefault
     }
 

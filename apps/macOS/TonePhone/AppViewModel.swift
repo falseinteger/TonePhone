@@ -240,6 +240,7 @@ final class AppViewModel: ObservableObject {
                 sipURI: account.sipURI,
                 password: password,
                 displayName: account.displayName.isEmpty ? nil : account.displayName,
+                transport: account.transport.rawValue,
                 registerImmediately: true
             )
             accountIDMapping[account.id] = bridgeID
