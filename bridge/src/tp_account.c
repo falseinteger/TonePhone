@@ -127,7 +127,13 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
                          config->transport);
         if (ret < 0)
             return ENOMEM;
+        len += ret;
     }
+
+    /* Add registration interval to enable registration */
+    ret = re_snprintf(buf + len, sz - len, ";regint=3600");
+    if (ret < 0)
+        return ENOMEM;
 
     return 0;
 }
@@ -170,6 +176,8 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
         return TP_ERR_INVALID_ARG;
     }
 
+    info("tp_account: creating UA with AOR: %s\n", aor);
+
     /* Allocate UA */
     err = ua_alloc(&ua, aor);
     if (err) {
@@ -194,12 +202,18 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
 
     info("tp_account: added account %u\n", entry->id);
 
-    /* Register if requested */
+    /* Register if requested
+     * Note: ua_alloc should have already started registration if the AOR
+     * is properly configured. We only call ua_register explicitly if needed.
+     */
     if (config->register_on_add) {
-        tp_error_t reg_err = tp_account_register(entry->id);
-        if (reg_err != TP_OK) {
-            warning("tp_account: auto-register failed: %d\n", reg_err);
-            /* Account is still added, just not registered */
+        /* Check if already registering/registered */
+        if (!ua_isregistered(ua)) {
+            int reg_err = ua_register(ua);
+            if (reg_err) {
+                warning("tp_account: ua_register failed: %m\n", reg_err);
+                /* Account is still added, registration will be retried */
+            }
         }
     }
 
@@ -272,16 +286,22 @@ tp_error_t tp_account_register(tp_account_id_t id)
         return TP_ERR_INTERNAL;
     }
 
+    struct ua *ua = entry->ua;
     pthread_mutex_unlock(&g_mutex);
 
+    /* Check if already registered */
+    if (ua_isregistered(ua)) {
+        info("tp_account: account %u already registered\n", id);
+        return TP_OK;
+    }
+
     /* Register with server */
-    err = ua_register(entry->ua);
+    info("tp_account: registering account %u\n", id);
+    err = ua_register(ua);
     if (err) {
         warning("tp_account: ua_register failed: %m\n", err);
         return TP_ERR_REGISTRATION_FAILED;
     }
-
-    info("tp_account: registering account %u\n", id);
 
     return TP_OK;
 }
@@ -344,4 +364,30 @@ tp_error_t tp_account_set_default(tp_account_id_t id)
     info("tp_account: set default account %u\n", id);
 
     return TP_OK;
+}
+
+/* =============================================================================
+ * ID Lookup (for event system)
+ * ============================================================================= */
+
+tp_account_id_t tp_account_find_id_by_ua(const struct ua *ua)
+{
+    tp_account_id_t result = TP_INVALID_ID;
+
+    if (!ua) {
+        return TP_INVALID_ID;
+    }
+
+    pthread_mutex_lock(&g_mutex);
+
+    for (int i = 0; i < MAX_ACCOUNTS; i++) {
+        if (g_accounts.accounts[i].in_use && g_accounts.accounts[i].ua == ua) {
+            result = g_accounts.accounts[i].id;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+
+    return result;
 }

@@ -58,4 +58,18 @@ tp_error_t tp_events_init(void);
  */
 void tp_events_close(void);
 
+/* =============================================================================
+ * Account ID Mapping (from tp_account.c)
+ * ============================================================================= */
+
+/* Forward declaration of baresip types */
+struct ua;
+
+/**
+ * @brief Look up account ID by UA pointer
+ * @param ua The UA pointer from baresip
+ * @return The account ID, or TP_INVALID_ID if not found
+ */
+tp_account_id_t tp_account_find_id_by_ua(const struct ua *ua);
+
 #endif /* TP_INTERNAL_H */
