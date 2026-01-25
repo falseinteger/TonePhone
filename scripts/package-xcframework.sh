@@ -130,6 +130,14 @@ copy_headers() {
         cp -R "$IOS_SIM_ARM64/include/re" "$IOS_SIM_FAT/include/"
     fi
 
+    # Copy rem headers (rem is built into libre via USE_REM=ON, but headers are still needed)
+    if [[ -d "$MACOS_ARM64/include/rem" ]]; then
+        cp -R "$MACOS_ARM64/include/rem" "$MACOS_FAT/include/"
+    fi
+    if [[ -d "$IOS_SIM_ARM64/include/rem" ]]; then
+        cp -R "$IOS_SIM_ARM64/include/rem" "$IOS_SIM_FAT/include/"
+    fi
+
     # Copy baresip header
     if [[ -f "$MACOS_ARM64/include/baresip.h" ]]; then
         cp "$MACOS_ARM64/include/baresip.h" "$MACOS_FAT/include/"
