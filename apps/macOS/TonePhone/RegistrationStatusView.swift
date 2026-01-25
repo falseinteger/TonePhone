@@ -8,7 +8,12 @@
 import SwiftUI
 
 /// A view that displays the registration status with a colored indicator.
+///
+/// Shows a horizontal layout with:
+/// - A colored circle indicating the status (gray/orange/green/red)
+/// - Text describing the current status
 struct RegistrationStatusView: View {
+    /// The registration status to display.
     let status: RegistrationStatus
 
     var body: some View {
