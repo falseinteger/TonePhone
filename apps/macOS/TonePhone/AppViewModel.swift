@@ -166,9 +166,13 @@ final class AppViewModel: ObservableObject {
                         // Auto-login flow: transition directly to active account
                         completeConnection()
                     }
-                case .failed:
-                    // Auto-login failed: go to account list
+                case .failed(let reason):
+                    // Auto-login failed: go to account list and show error
                     if currentScreen == .connecting {
+                        let accountName = connectingAccount?.displayName.isEmpty == false
+                            ? connectingAccount?.displayName
+                            : connectingAccount?.username
+                        errorMessage = "Failed to connect to \(accountName ?? "account"): \(reason ?? "Connection failed")"
                         connectingAccount = nil
                         currentScreen = .accountList
                     }
