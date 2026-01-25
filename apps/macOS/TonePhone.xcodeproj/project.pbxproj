@@ -3,48 +3,38 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		/* System Frameworks */
 		F0000001AAAAAAAA00000001 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000001 /* AudioToolbox.framework */; };
 		F0000001AAAAAAAA00000002 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000002 /* AudioUnit.framework */; };
 		F0000001AAAAAAAA00000003 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000003 /* CoreAudio.framework */; };
 		F0000001AAAAAAAA00000004 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000004 /* Security.framework */; };
 		F0000001AAAAAAAA00000005 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000005 /* SystemConfiguration.framework */; };
 		F0000001AAAAAAAA00000006 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000006 /* AVFoundation.framework */; };
-		/* Static Libraries */
 		F0000001AAAAAAAA00000007 /* libre.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000007 /* libre.a */; };
 		F0000001AAAAAAAA00000008 /* libbaresip.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000008 /* libbaresip.a */; };
-		/* OpenSSL */
 		F0000001AAAAAAAA00000009 /* libssl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000009 /* libssl.a */; };
 		F0000001AAAAAAAA0000000A /* libcrypto.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA0000000A /* libcrypto.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AB6132BD2F257E860061E7F9 /* TonePhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonePhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		/* System Frameworks */
 		F0000002AAAAAAAA00000001 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		F0000002AAAAAAAA00000002 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = System/Library/Frameworks/AudioUnit.framework; sourceTree = SDKROOT; };
 		F0000002AAAAAAAA00000003 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		F0000002AAAAAAAA00000004 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		F0000002AAAAAAAA00000005 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		F0000002AAAAAAAA00000006 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
-		/* Static Libraries */
-		F0000002AAAAAAAA00000007 /* libre.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libre.a; path = ../../output/macos-fat/lib/libre.a; sourceTree = "<group>"; };
-		F0000002AAAAAAAA00000008 /* libbaresip.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbaresip.a; path = ../../output/macos-fat/lib/libbaresip.a; sourceTree = "<group>"; };
-		/* OpenSSL */
-		F0000002AAAAAAAA00000009 /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = ../../output/macos-fat/lib/libssl.a; sourceTree = "<group>"; };
-		F0000002AAAAAAAA0000000A /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = ../../output/macos-fat/lib/libcrypto.a; sourceTree = "<group>"; };
+		F0000002AAAAAAAA00000007 /* libre.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libre.a; path = "../../output/macos-fat/lib/libre.a"; sourceTree = "<group>"; };
+		F0000002AAAAAAAA00000008 /* libbaresip.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbaresip.a; path = "../../output/macos-fat/lib/libbaresip.a"; sourceTree = "<group>"; };
+		F0000002AAAAAAAA00000009 /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = "../../output/macos-fat/lib/libssl.a"; sourceTree = "<group>"; };
+		F0000002AAAAAAAA0000000A /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = "../../output/macos-fat/lib/libcrypto.a"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AB6132BF2F257E860061E7F9 /* TonePhone */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TonePhone;
-			sourceTree = "<group>";
-		};
+		AB6132BF2F257E860061E7F9 /* TonePhone */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = TonePhone; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +133,7 @@
 				};
 			};
 			buildConfigurationList = AB6132B82F257E860061E7F9 /* Build configuration list for PBXProject "TonePhone" */;
+			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -151,7 +142,6 @@
 			);
 			mainGroup = AB6132B42F257E860061E7F9;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 56;
 			productRefGroup = AB6132BE2F257E860061E7F9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -304,7 +294,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TonePhone/TonePhone.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -338,7 +328,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TonePhone/TonePhone.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
