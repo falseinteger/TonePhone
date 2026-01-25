@@ -40,7 +40,7 @@ struct LaunchConnectingView: View {
                             .frame(width: 80, height: 80)
 
                         if let account = viewModel.connectingAccount {
-                            Text(initials(for: account))
+                            Text(account.initials)
                                 .font(.system(size: 28, weight: .medium, design: .rounded))
                                 .foregroundColor(.accentColor)
                         } else {
@@ -104,15 +104,6 @@ struct LaunchConnectingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private func initials(for account: SIPAccount) -> String {
-        let name = account.displayName.isEmpty ? account.username : account.displayName
-        let components = name.split(separator: " ")
-        if components.count >= 2 {
-            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
-        }
-        return String(name.prefix(2)).uppercased()
     }
 }
 

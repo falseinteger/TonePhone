@@ -15,9 +15,9 @@ struct TonePhoneApp: App {
         WindowGroup {
             ContentView()
                 .background(WindowConfigurator())
-                .handlesExternalEvents(preferring: Set(arrayLiteral: "main"), allowing: Set(arrayLiteral: "main"))
+                .handlesExternalEvents(preferring: ["main"], allowing: ["main"])
         }
-        .handlesExternalEvents(matching: Set(arrayLiteral: "main"))
+        .handlesExternalEvents(matching: ["main"])
         .commands {
             // Remove "New Window" command (Cmd+N)
             CommandGroup(replacing: .newItem) {}
