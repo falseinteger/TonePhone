@@ -35,8 +35,8 @@
 		F0000002AAAAAAAA00000007 /* libre.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libre.a; path = ../../output/macos-fat/lib/libre.a; sourceTree = "<group>"; };
 		F0000002AAAAAAAA00000008 /* libbaresip.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbaresip.a; path = ../../output/macos-fat/lib/libbaresip.a; sourceTree = "<group>"; };
 		/* OpenSSL */
-		F0000002AAAAAAAA00000009 /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = ../../core/openssl/macos-arm64/lib/libssl.a; sourceTree = "<group>"; };
-		F0000002AAAAAAAA0000000A /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = ../../core/openssl/macos-arm64/lib/libcrypto.a; sourceTree = "<group>"; };
+		F0000002AAAAAAAA00000009 /* libssl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libssl.a; path = ../../output/macos-fat/lib/libssl.a; sourceTree = "<group>"; };
+		F0000002AAAAAAAA0000000A /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = ../../output/macos-fat/lib/libcrypto.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -311,19 +311,11 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../output/macos-fat/include",
-					"$(PROJECT_DIR)/../../core/openssl/macos-arm64/include",
-				);
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/include";
 				INFOPLIST_FILE = TonePhone/Info.plist;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TonePhone needs microphone access for voice calls.";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../output/macos-fat/lib",
-					"$(PROJECT_DIR)/../../core/openssl/macos-arm64/lib",
-					"$(PROJECT_DIR)/../../core/openssl/macos-x86_64/lib",
-				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -353,19 +345,11 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../output/macos-fat/include",
-					"$(PROJECT_DIR)/../../core/openssl/macos-arm64/include",
-				);
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/include";
 				INFOPLIST_FILE = TonePhone/Info.plist;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TonePhone needs microphone access for voice calls.";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../output/macos-fat/lib",
-					"$(PROJECT_DIR)/../../core/openssl/macos-arm64/lib",
-					"$(PROJECT_DIR)/../../core/openssl/macos-x86_64/lib",
-				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (

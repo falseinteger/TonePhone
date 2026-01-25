@@ -34,6 +34,9 @@ IOS_ARM64="$OUTPUT_DIR/ios-arm64"
 IOS_SIM_ARM64="$OUTPUT_DIR/ios-sim-arm64"
 IOS_SIM_X86_64="$OUTPUT_DIR/ios-sim-x86_64"
 
+# OpenSSL directories (built by build-openssl.sh)
+OPENSSL_DIR="$PROJECT_ROOT/core/openssl"
+
 # Fat library directories
 MACOS_FAT="$OUTPUT_DIR/macos-fat"
 IOS_SIM_FAT="$OUTPUT_DIR/ios-sim-fat"
@@ -85,6 +88,16 @@ check_prerequisites() {
         fi
     done
 
+    # Check that OpenSSL exists for macOS platforms
+    local macos_platforms=("macos-arm64" "macos-x86_64")
+    for platform in "${macos_platforms[@]}"; do
+        if [[ ! -f "$OPENSSL_DIR/$platform/lib/libssl.a" ]] || \
+           [[ ! -f "$OPENSSL_DIR/$platform/lib/libcrypto.a" ]]; then
+            log_error "OpenSSL not found for $platform. Run: ./scripts/build-openssl.sh"
+            exit 1
+        fi
+    done
+
     log_info "Prerequisites OK"
 }
 
@@ -112,6 +125,25 @@ create_sim_fat_lib() {
         "$IOS_SIM_ARM64/lib/$lib_name" \
         "$IOS_SIM_X86_64/lib/$lib_name" \
         -output "$fat_dir/$lib_name"
+}
+
+# Create fat OpenSSL libraries for macOS (arm64 + x86_64)
+create_openssl_fat_libs() {
+    local fat_dir="$MACOS_FAT/lib"
+    mkdir -p "$fat_dir"
+
+    for lib in libssl.a libcrypto.a; do
+        log_info "Creating macOS fat OpenSSL library: $lib"
+        lipo -create \
+            "$OPENSSL_DIR/macos-arm64/lib/$lib" \
+            "$OPENSSL_DIR/macos-x86_64/lib/$lib" \
+            -output "$fat_dir/$lib"
+    done
+
+    # Copy OpenSSL headers (same for all architectures)
+    log_info "Copying OpenSSL headers..."
+    mkdir -p "$MACOS_FAT/include"
+    cp -R "$OPENSSL_DIR/macos-arm64/include/openssl" "$MACOS_FAT/include/"
 }
 
 # Copy headers for fat library directories
@@ -249,6 +281,9 @@ main() {
     create_macos_fat_lib "libbaresip.a"
     create_sim_fat_lib "libre.a"
     create_sim_fat_lib "libbaresip.a"
+
+    # Create fat OpenSSL libraries
+    create_openssl_fat_libs
 
     # Copy headers
     copy_headers
