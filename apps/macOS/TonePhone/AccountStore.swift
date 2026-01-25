@@ -1,0 +1,195 @@
+//
+//  AccountStore.swift
+//  TonePhone
+//
+//  Persistent storage for SIP account configuration.
+//  Non-sensitive data is stored in JSON, passwords in Keychain.
+//
+
+import Foundation
+import Security
+
+/// Represents a SIP account configuration.
+struct SIPAccount: Codable, Identifiable, Equatable {
+    /// Unique identifier for the account.
+    let id: UUID
+    /// SIP server address (e.g., "sip.example.com").
+    var server: String
+    /// SIP username.
+    var username: String
+    /// Display name (optional).
+    var displayName: String
+    /// Whether this is the default account.
+    var isDefault: Bool
+
+    /// Creates a new account with default values.
+    init(
+        id: UUID = UUID(),
+        server: String = "",
+        username: String = "",
+        displayName: String = "",
+        isDefault: Bool = false
+    ) {
+        self.id = id
+        self.server = server
+        self.username = username
+        self.displayName = displayName
+        self.isDefault = isDefault
+    }
+
+    /// Constructs the SIP URI from server and username.
+    var sipURI: String {
+        "sip:\(username)@\(server)"
+    }
+}
+
+/// Manages persistent storage for SIP accounts.
+///
+/// Account metadata is stored in a JSON file.
+/// Passwords are stored securely in the Keychain.
+final class AccountStore {
+
+    /// Shared singleton instance.
+    static let shared = AccountStore()
+
+    /// File URL for the accounts JSON file.
+    private let accountsFileURL: URL
+
+    /// Keychain service identifier.
+    private let keychainService = "com.tonephone.accounts"
+
+    private init() {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+
+        let tonePhoneDir = appSupport.appendingPathComponent("TonePhone", isDirectory: true)
+
+        // Create directory if needed
+        try? FileManager.default.createDirectory(
+            at: tonePhoneDir,
+            withIntermediateDirectories: true
+        )
+
+        accountsFileURL = tonePhoneDir.appendingPathComponent("accounts.json")
+    }
+
+    // MARK: - Account Persistence
+
+    /// Loads all accounts from storage.
+    func loadAccounts() -> [SIPAccount] {
+        guard FileManager.default.fileExists(atPath: accountsFileURL.path) else {
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: accountsFileURL)
+            let accounts = try JSONDecoder().decode([SIPAccount].self, from: data)
+            return accounts
+        } catch {
+            print("Failed to load accounts: \(error)")
+            return []
+        }
+    }
+
+    /// Saves all accounts to storage.
+    func saveAccounts(_ accounts: [SIPAccount]) {
+        do {
+            let data = try JSONEncoder().encode(accounts)
+            try data.write(to: accountsFileURL, options: .atomic)
+        } catch {
+            print("Failed to save accounts: \(error)")
+        }
+    }
+
+    /// Saves a single account (add or update).
+    func saveAccount(_ account: SIPAccount) {
+        var accounts = loadAccounts()
+
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
+        }
+
+        // If this account is default, clear default from others
+        if account.isDefault {
+            for i in accounts.indices where accounts[i].id != account.id {
+                accounts[i].isDefault = false
+            }
+        }
+
+        saveAccounts(accounts)
+    }
+
+    /// Deletes an account from storage.
+    func deleteAccount(id: UUID) {
+        var accounts = loadAccounts()
+        accounts.removeAll { $0.id == id }
+        saveAccounts(accounts)
+
+        // Also remove password from Keychain
+        deletePassword(for: id)
+    }
+
+    // MARK: - Keychain Operations
+
+    /// Saves a password to the Keychain.
+    func savePassword(_ password: String, for accountID: UUID) {
+        let key = accountID.uuidString
+        let passwordData = password.data(using: .utf8)!
+
+        // Delete existing item first
+        deletePassword(for: accountID)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: passwordData
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("Failed to save password to Keychain: \(status)")
+        }
+    }
+
+    /// Retrieves a password from the Keychain.
+    func getPassword(for accountID: UUID) -> String? {
+        let key = accountID.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let password = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return password
+    }
+
+    /// Deletes a password from the Keychain.
+    func deletePassword(for accountID: UUID) {
+        let key = accountID.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key
+        ]
+
+        SecItemDelete(query as CFDictionary)
+    }
+}
