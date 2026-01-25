@@ -204,6 +204,8 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
     }
 
     info("tp_account: creating UA with AOR: %s\n", aor);
+    info("tp_account: conf_cur() = %p, conf_config() = %p\n",
+         conf_cur(), conf_config());
 
     /* Allocate UA */
     err = ua_alloc(&ua, aor);
@@ -236,12 +238,16 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
     if (config->register_on_add) {
         /* Check if already registering/registered */
         if (!ua_isregistered(ua)) {
+            info("tp_account: calling ua_register for account %u, uag_sip=%p\n",
+                 entry->id, uag_sip());
             int reg_err = ua_register(ua);
             if (reg_err) {
                 warning("tp_account: ua_register failed: %m\n", reg_err);
                 /* Fire a failure event manually since baresip won't */
                 post_account_failure_event(entry->id, "Registration failed");
             }
+        } else {
+            info("tp_account: account %u already registered\n", entry->id);
         }
     }
 
@@ -251,6 +257,7 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
 tp_error_t tp_account_remove(tp_account_id_t id)
 {
     account_entry_t *entry;
+    struct ua *ua_to_remove = NULL;
 
     if (id == TP_INVALID_ID) {
         return TP_ERR_INVALID_ARG;
@@ -264,10 +271,9 @@ tp_error_t tp_account_remove(tp_account_id_t id)
         return TP_ERR_NOT_FOUND;
     }
 
-    /* Unregister first */
+    /* Save UA pointer and clear from entry */
     if (entry->ua) {
-        ua_unregister(entry->ua);
-        mem_deref(entry->ua);
+        ua_to_remove = entry->ua;
         entry->ua = NULL;
     }
 
@@ -286,6 +292,12 @@ tp_error_t tp_account_remove(tp_account_id_t id)
     }
 
     pthread_mutex_unlock(&g_mutex);
+
+    /* Unregister and free UA outside of mutex to avoid deadlock */
+    if (ua_to_remove) {
+        ua_unregister(ua_to_remove);
+        mem_deref(ua_to_remove);
+    }
 
     info("tp_account: removed account %u\n", id);
 
@@ -337,6 +349,7 @@ tp_error_t tp_account_register(tp_account_id_t id)
 tp_error_t tp_account_unregister(tp_account_id_t id)
 {
     account_entry_t *entry;
+    struct ua *ua;
 
     if (id == TP_INVALID_ID) {
         return TP_ERR_INVALID_ARG;
@@ -355,11 +368,13 @@ tp_error_t tp_account_unregister(tp_account_id_t id)
         return TP_ERR_INTERNAL;
     }
 
-    ua_unregister(entry->ua);
-
+    /* Copy UA pointer and release mutex before calling baresip
+     * to avoid deadlock with event callbacks */
+    ua = entry->ua;
     pthread_mutex_unlock(&g_mutex);
 
     info("tp_account: unregistering account %u\n", id);
+    ua_unregister(ua);
 
     return TP_OK;
 }

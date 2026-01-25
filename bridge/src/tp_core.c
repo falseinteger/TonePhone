@@ -174,6 +174,8 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     }
 
     /* Configure from config files */
+    info("tp_core: calling conf_configure with path: %s\n",
+         config_path ? config_path : "(default)");
     err = conf_configure();
     if (err) {
         warning("tp_core: conf_configure failed: %m\n", err);
@@ -183,6 +185,8 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         pthread_mutex_unlock(&g_mutex);
         return TP_ERR_INTERNAL;
     }
+    info("tp_core: conf_configure succeeded, conf_cur=%p, conf_config=%p\n",
+         conf_cur(), conf_config());
 
     /* Initialize async worker threads */
     err = re_thread_async_init(TP_ASYNC_WORKERS);
