@@ -54,6 +54,14 @@ enum RegistrationStatus: Equatable {
     }
 }
 
+/// Represents the current screen in the app flow.
+enum AppScreen: Equatable {
+    /// Account selection/list screen.
+    case accountList
+    /// Connected to an account, showing main interface.
+    case activeAccount
+}
+
 /// Main view model for tracking application state.
 ///
 /// Subscribes to `TonePhoneCore.events` and maintains a map of account states.
@@ -61,6 +69,9 @@ enum RegistrationStatus: Equatable {
 /// Also manages account configuration and persistence.
 @MainActor
 final class AppViewModel: ObservableObject {
+    /// Current screen being displayed.
+    @Published private(set) var currentScreen: AppScreen = .accountList
+
     /// Current registration status for display.
     @Published private(set) var registrationStatus: RegistrationStatus = .notConfigured
 
@@ -73,11 +84,17 @@ final class AppViewModel: ObservableObject {
     /// Whether the account configuration sheet is showing.
     @Published var isAccountSheetPresented = false
 
+    /// Whether the connection progress sheet is showing.
+    @Published var isConnectionSheetPresented = false
+
+    /// The account currently being connected.
+    @Published private(set) var connectingAccount: SIPAccount?
+
+    /// The active (connected) account.
+    @Published private(set) var activeAccount: SIPAccount?
+
     /// Error message to display to user.
     @Published var errorMessage: String?
-
-    /// Whether a connection attempt is in progress.
-    @Published private(set) var isConnecting = false
 
     /// Tracked account states by ID.
     private var accountStates: [AccountID: AccountState] = [:]
@@ -91,7 +108,31 @@ final class AppViewModel: ObservableObject {
     /// Creates the view model and subscribes to TonePhoneCore events.
     init() {
         subscribeToEvents()
+        startCore()
         loadAccounts()
+        autoConnectIfNeeded()
+        showAddAccountIfEmpty()
+    }
+
+    /// Shows the add account sheet if no accounts exist.
+    private func showAddAccountIfEmpty() {
+        if accounts.isEmpty {
+            // Delay slightly to ensure the UI is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.showAddAccountSheet()
+            }
+        }
+    }
+
+    /// Starts the TonePhoneCore SIP engine.
+    private func startCore() {
+        do {
+            try TonePhoneCore.shared.start()
+            print("AppViewModel: TonePhoneCore started successfully")
+        } catch {
+            print("AppViewModel: Failed to start TonePhoneCore: \(error)")
+            errorMessage = "Failed to initialize SIP engine: \(error.localizedDescription)"
+        }
     }
 
     /// Subscribes to TonePhoneCore events to track account state changes.
@@ -111,6 +152,11 @@ final class AppViewModel: ObservableObject {
         case .accountStateChanged(let accountID, let state):
             accountStates[accountID] = state
             updateRegistrationStatus()
+
+            // Auto-complete connection when registered
+            if case .registered = state, isConnectionSheetPresented, connectingAccount != nil {
+                completeConnection()
+            }
 
         case .coreStateChanged, .callStateChanged, .mediaChanged:
             // Handled elsewhere or not needed for registration status
@@ -170,6 +216,18 @@ final class AppViewModel: ObservableObject {
     private func loadAccounts() {
         accounts = AccountStore.shared.loadAccounts()
         updateRegistrationStatus()
+    }
+
+    /// Auto-connects to an account if autoLogin is enabled.
+    private func autoConnectIfNeeded() {
+        // Find account with autoLogin enabled
+        guard let autoLoginAccount = accounts.first(where: { $0.autoLogin }) else {
+            return
+        }
+
+        // Start connection for auto-login account
+        print("AppViewModel: Auto-connecting to \(autoLoginAccount.server)")
+        startConnection(for: autoLoginAccount)
     }
 
     /// Shows the account configuration sheet for adding a new account.
@@ -265,61 +323,76 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Connect Button
+    // MARK: - Connection Flow
 
-    /// Title for the connect button based on current state.
-    var connectButtonTitle: String {
-        switch registrationStatus {
-        case .notConfigured:
-            return "Connect"
-        case .registering:
-            return "Connecting..."
-        case .registered:
-            return "Disconnect"
-        case .failed:
-            return "Retry"
+    /// Starts the connection process for an account.
+    /// Shows the connection progress sheet.
+    func startConnection(for account: SIPAccount) {
+        connectingAccount = account
+        isConnectionSheetPresented = true
+
+        // Start registration
+        if let password = AccountStore.shared.getPassword(for: account.id) {
+            registerAccountWithCore(account, password: password)
         }
     }
 
-    /// Whether the connect button should be enabled.
-    var canConnect: Bool {
-        switch registrationStatus {
-        case .registering:
-            return false
-        default:
-            return true
-        }
-    }
-
-    /// Handles connect button tap.
-    /// - Parameter account: The account to connect/disconnect.
-    func connectAccount(_ account: SIPAccount) {
-        switch registrationStatus {
-        case .registered:
-            // Disconnect
-            disconnectAccount(account)
-        case .notConfigured, .failed:
-            // Connect
-            if let password = AccountStore.shared.getPassword(for: account.id) {
-                registerAccountWithCore(account, password: password)
+    /// Cancels the current connection attempt.
+    func cancelConnection() {
+        if let account = connectingAccount, let bridgeID = accountIDMapping[account.id] {
+            do {
+                try TonePhoneCore.shared.unregisterAccount(bridgeID)
+            } catch {
+                // Ignore errors when canceling
             }
-        case .registering:
-            // Already connecting, do nothing
-            break
+            accountStates[bridgeID] = .unregistered
+        }
+
+        connectingAccount = nil
+        isConnectionSheetPresented = false
+        updateRegistrationStatus()
+    }
+
+    /// Retries the connection for the current account.
+    func retryConnection() {
+        guard let account = connectingAccount else { return }
+
+        if let password = AccountStore.shared.getPassword(for: account.id) {
+            registerAccountWithCore(account, password: password)
         }
     }
 
-    /// Disconnects an account.
-    /// - Parameter account: The account to disconnect.
-    private func disconnectAccount(_ account: SIPAccount) {
-        guard let bridgeID = accountIDMapping[account.id] else { return }
+    /// Opens the account editor for the connecting account.
+    func editConnectingAccount() {
+        guard let account = connectingAccount else { return }
 
-        do {
-            try TonePhoneCore.shared.unregisterAccount(bridgeID)
+        // Close connection sheet and open edit sheet
+        isConnectionSheetPresented = false
+        connectingAccount = nil
+        showEditAccountSheet(for: account)
+    }
+
+    /// Completes the connection and transitions to active account screen.
+    func completeConnection() {
+        activeAccount = connectingAccount
+        connectingAccount = nil
+        isConnectionSheetPresented = false
+        currentScreen = .activeAccount
+    }
+
+    /// Unregisters the active account and returns to account list.
+    func unregisterAndGoBack() {
+        if let account = activeAccount, let bridgeID = accountIDMapping[account.id] {
+            do {
+                try TonePhoneCore.shared.unregisterAccount(bridgeID)
+            } catch {
+                errorMessage = "Failed to unregister: \(error.localizedDescription)"
+            }
             accountStates[bridgeID] = .unregistered
-            updateRegistrationStatus()
-        } catch {
-            errorMessage = "Failed to disconnect: \(error.localizedDescription)"
         }
+
+        activeAccount = nil
+        currentScreen = .accountList
+        updateRegistrationStatus()
     }
 }

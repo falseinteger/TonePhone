@@ -287,11 +287,19 @@ public final class TonePhoneCore {
             throw TonePhoneError.alreadyInitialized
         }
 
+        // Ensure config directory exists with minimal config
+        let effectiveConfigPath = try configPath ?? createDefaultConfigDirectory()
+
+        // Verify config file exists
+        let configFile = URL(fileURLWithPath: effectiveConfigPath).appendingPathComponent("config")
+        print("TonePhoneCore: Using config path: \(effectiveConfigPath)")
+        print("TonePhoneCore: Config file exists: \(FileManager.default.fileExists(atPath: configFile.path))")
+
         // Register event callback before init
         registerEventCallback()
 
         // Initialize bridge
-        let initResult = tp_init(configPath, logPath)
+        let initResult = tp_init(effectiveConfigPath, logPath)
         guard initResult == TP_OK else {
             tp_set_event_callback(nil, nil)
             throw TonePhoneError(from: initResult)
@@ -308,6 +316,48 @@ public final class TonePhoneCore {
             coreState = .idle
             throw TonePhoneError(from: startResult)
         }
+    }
+
+    /// Creates a default config directory with minimal baresip configuration.
+    /// - Returns: Path to the created config directory.
+    private func createDefaultConfigDirectory() throws -> String {
+        let fileManager = FileManager.default
+
+        // Get Application Support directory
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw TonePhoneError.internalError
+        }
+
+        let configDir = appSupport.appendingPathComponent("TonePhone", isDirectory: true)
+
+        // Create directory if needed
+        if !fileManager.fileExists(atPath: configDir.path) {
+            try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true)
+        }
+
+        // Create minimal config file if it doesn't exist
+        let configFile = configDir.appendingPathComponent("config")
+        if !fileManager.fileExists(atPath: configFile.path) {
+            // Minimal config - modules are statically linked, no need for module_path
+            let minimalConfig = """
+            # TonePhone minimal configuration
+
+            # Audio (AudioUnit on macOS/iOS)
+            audio_player audiounit
+            audio_source audiounit
+            audio_alert audiounit
+
+            # SIP settings
+            sip_listen 0.0.0.0:0
+
+            # Audio codec priority (g711 is always available)
+            audio_codecs g711
+
+            """
+            try minimalConfig.write(to: configFile, atomically: true, encoding: .utf8)
+        }
+
+        return configDir.path
     }
 
     /// Stop and shut down the TonePhone engine.

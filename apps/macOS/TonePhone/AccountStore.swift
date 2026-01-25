@@ -33,8 +33,10 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var displayName: String
     /// Transport protocol (UDP, TCP, TLS).
     var transport: SIPTransport
-    /// Whether this is the default account.
+    /// Whether this is the default account for outgoing calls.
     var isDefault: Bool
+    /// Whether to automatically connect on app launch.
+    var autoLogin: Bool
 
     /// Creates a new account with default values.
     init(
@@ -43,7 +45,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         username: String = "",
         displayName: String = "",
         transport: SIPTransport = .udp,
-        isDefault: Bool = false
+        isDefault: Bool = false,
+        autoLogin: Bool = false
     ) {
         self.id = id
         self.server = server
@@ -51,6 +54,7 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         self.displayName = displayName
         self.transport = transport
         self.isDefault = isDefault
+        self.autoLogin = autoLogin
     }
 
     /// Constructs the SIP URI from server and username.
@@ -136,6 +140,13 @@ final class AccountStore {
             }
         }
 
+        // If this account has autoLogin, clear autoLogin from others
+        if account.autoLogin {
+            for i in accounts.indices where accounts[i].id != account.id {
+                accounts[i].autoLogin = false
+            }
+        }
+
         saveAccounts(accounts)
     }
 
@@ -149,15 +160,62 @@ final class AccountStore {
         deletePassword(for: id)
     }
 
-    // MARK: - Keychain Operations
+    // MARK: - Password Storage
 
-    /// Saves a password to the Keychain.
+    /// Saves a password.
+    /// In DEBUG builds, uses UserDefaults to avoid Keychain prompts.
+    /// In Release builds, uses Keychain for secure storage.
     func savePassword(_ password: String, for accountID: UUID) {
+        #if DEBUG
+        savePasswordToUserDefaults(password, for: accountID)
+        #else
+        savePasswordToKeychain(password, for: accountID)
+        #endif
+    }
+
+    /// Retrieves a password.
+    func getPassword(for accountID: UUID) -> String? {
+        #if DEBUG
+        return getPasswordFromUserDefaults(for: accountID)
+        #else
+        return getPasswordFromKeychain(for: accountID)
+        #endif
+    }
+
+    /// Deletes a password.
+    func deletePassword(for accountID: UUID) {
+        #if DEBUG
+        deletePasswordFromUserDefaults(for: accountID)
+        #else
+        deletePasswordFromKeychain(for: accountID)
+        #endif
+    }
+
+    // MARK: - UserDefaults Storage (DEBUG only)
+
+    private func savePasswordToUserDefaults(_ password: String, for accountID: UUID) {
+        let key = "password_\(accountID.uuidString)"
+        UserDefaults.standard.set(password, forKey: key)
+    }
+
+    private func getPasswordFromUserDefaults(for accountID: UUID) -> String? {
+        let key = "password_\(accountID.uuidString)"
+        return UserDefaults.standard.string(forKey: key)
+    }
+
+    private func deletePasswordFromUserDefaults(for accountID: UUID) {
+        let key = "password_\(accountID.uuidString)"
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    // MARK: - Keychain Storage (Release only)
+
+    private func savePasswordToKeychain(_ password: String, for accountID: UUID) {
         let key = accountID.uuidString
         let passwordData = password.data(using: .utf8)!
 
         // Delete existing item first
-        deletePassword(for: accountID)
+        deletePasswordFromKeychain(for: accountID)
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -172,8 +230,7 @@ final class AccountStore {
         }
     }
 
-    /// Retrieves a password from the Keychain.
-    func getPassword(for accountID: UUID) -> String? {
+    private func getPasswordFromKeychain(for accountID: UUID) -> String? {
         let key = accountID.uuidString
 
         let query: [String: Any] = [
@@ -196,8 +253,7 @@ final class AccountStore {
         return password
     }
 
-    /// Deletes a password from the Keychain.
-    func deletePassword(for accountID: UUID) {
+    private func deletePasswordFromKeychain(for accountID: UUID) {
         let key = accountID.uuidString
 
         let query: [String: Any] = [

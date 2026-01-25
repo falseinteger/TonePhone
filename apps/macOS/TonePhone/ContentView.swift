@@ -9,80 +9,22 @@ import SwiftUI
 
 /// Main content view for the TonePhone application window.
 ///
-/// Displays the app branding, account configuration, and registration status.
-/// The status updates in real-time as account state changes are received.
+/// Manages the navigation between different screens based on app state.
+/// Shows account list when not connected, active account view when connected.
 struct ContentView: View {
-    /// View model that tracks account registration state.
+    /// View model that tracks account and registration state.
     @StateObject private var viewModel = AppViewModel()
 
     var body: some View {
-        VStack {
-            Spacer()
-
-            // App icon
-            Image(systemName: "phone.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
-
-            Text("TonePhone")
-                .font(.title)
-                .padding(.top, 8)
-
-            Spacer()
-
-            // Account configuration button
-            if viewModel.accounts.isEmpty {
-                Button("Add Account") {
-                    viewModel.showAddAccountSheet()
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel("Add SIP Account")
-            } else {
-                // Show configured account with edit and connect options
-                if let account = viewModel.accounts.first {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(account.displayName.isEmpty ? account.username : account.displayName)
-                                .font(.headline)
-                            Text(account.server)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        Spacer()
-
-                        // Connect button
-                        Button {
-                            viewModel.connectAccount(account)
-                        } label: {
-                            Text(viewModel.connectButtonTitle)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!viewModel.canConnect)
-                        .accessibilityLabel(viewModel.connectButtonTitle)
-
-                        // Edit button
-                        Button {
-                            viewModel.showEditAccountSheet(for: account)
-                        } label: {
-                            Image(systemName: "pencil")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Edit Account")
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
-                    .padding(.horizontal)
-                }
+        Group {
+            switch viewModel.currentScreen {
+            case .accountList:
+                AccountListView(viewModel: viewModel)
+            case .activeAccount:
+                ActiveAccountView(viewModel: viewModel)
             }
-
-            Spacer()
-
-            // Registration status at the bottom
-            RegistrationStatusView(status: viewModel.registrationStatus)
-                .padding(.bottom, 20)
         }
-        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $viewModel.isAccountSheetPresented) {
             AccountConfigView(account: viewModel.selectedAccount)
                 .onSave { account, password in
@@ -91,6 +33,9 @@ struct ContentView: View {
                 .onDelete { accountID in
                     viewModel.deleteAccount(id: accountID)
                 }
+        }
+        .sheet(isPresented: $viewModel.isConnectionSheetPresented) {
+            ConnectionProgressView(viewModel: viewModel)
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.errorMessage != nil },

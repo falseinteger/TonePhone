@@ -33,7 +33,8 @@ struct AccountConfigView: View {
     @State private var password: String = ""
     @State private var displayName: String = ""
     @State private var transport: SIPTransport = .udp
-    @State private var isDefault: Bool = true
+    @State private var isDefault: Bool = false
+    @State private var autoLogin: Bool = false
 
     // Validation state
     @State private var showValidationError = false
@@ -109,6 +110,18 @@ struct AccountConfigView: View {
                     .accessibilityLabel("Transport Protocol")
                 }
 
+                Divider()
+                    .padding(.vertical, 4)
+
+                // Account options
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Auto-connect on launch", isOn: $autoLogin)
+                        .accessibilityLabel("Auto-connect on app launch")
+
+                    Toggle("Default account for calls", isOn: $isDefault)
+                        .accessibilityLabel("Set as default account")
+                }
+
                 if showValidationError {
                     Text(validationMessage)
                         .foregroundColor(.red)
@@ -147,7 +160,7 @@ struct AccountConfigView: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 400)
+        .frame(width: 400, height: 480)
         .onAppear {
             loadExistingAccount()
         }
@@ -184,6 +197,7 @@ struct AccountConfigView: View {
         displayName = account.displayName
         transport = account.transport
         isDefault = account.isDefault
+        autoLogin = account.autoLogin
 
         // Load password from Keychain
         if let storedPassword = AccountStore.shared.getPassword(for: account.id) {
@@ -219,7 +233,8 @@ struct AccountConfigView: View {
             username: trimmedUsername,
             displayName: displayName.trimmingCharacters(in: .whitespaces),
             transport: transport,
-            isDefault: existingAccount?.isDefault ?? true
+            isDefault: isDefault,
+            autoLogin: autoLogin
         )
 
         onSave?(account, password)
