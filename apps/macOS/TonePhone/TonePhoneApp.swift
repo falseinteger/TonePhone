@@ -2,7 +2,7 @@
 //  TonePhoneApp.swift
 //  TonePhone
 //
-//  Created by Dmitrii Poroshkov on 1/24/26.
+//  Main application entry point.
 //
 
 import SwiftUI
@@ -12,6 +12,7 @@ struct TonePhoneApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .frame(minWidth: 300, minHeight: 200)
         }
     }
 }
