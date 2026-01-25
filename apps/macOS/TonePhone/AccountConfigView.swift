@@ -32,6 +32,7 @@ struct AccountConfigView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var displayName: String = ""
+    @State private var transport: SIPTransport = .udp
     @State private var isDefault: Bool = true
 
     // Validation state
@@ -95,6 +96,19 @@ struct AccountConfigView: View {
                         .accessibilityLabel("Display Name")
                 }
 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transport")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Picker("Transport", selection: $transport) {
+                        ForEach(SIPTransport.allCases, id: \.self) { t in
+                            Text(t.displayName).tag(t)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Transport Protocol")
+                }
+
                 if showValidationError {
                     Text(validationMessage)
                         .foregroundColor(.red)
@@ -133,7 +147,7 @@ struct AccountConfigView: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 340)
+        .frame(width: 400, height: 400)
         .onAppear {
             loadExistingAccount()
         }
@@ -168,6 +182,7 @@ struct AccountConfigView: View {
         server = account.server
         username = account.username
         displayName = account.displayName
+        transport = account.transport
         isDefault = account.isDefault
 
         // Load password from Keychain
@@ -203,6 +218,7 @@ struct AccountConfigView: View {
             server: trimmedServer,
             username: trimmedUsername,
             displayName: displayName.trimmingCharacters(in: .whitespaces),
+            transport: transport,
             isDefault: existingAccount?.isDefault ?? true
         )
 
