@@ -56,6 +56,8 @@ enum RegistrationStatus: Equatable {
 
 /// Represents the current screen in the app flow.
 enum AppScreen: Equatable {
+    /// Loading/connecting screen during auto-login.
+    case connecting
     /// Account selection/list screen.
     case accountList
     /// Connected to an account, showing main interface.
@@ -153,9 +155,26 @@ final class AppViewModel: ObservableObject {
             accountStates[accountID] = state
             updateRegistrationStatus()
 
-            // Auto-complete connection when registered
-            if case .registered = state, isConnectionSheetPresented, connectingAccount != nil {
-                completeConnection()
+            // Handle connection completion
+            if connectingAccount != nil {
+                switch state {
+                case .registered:
+                    // Auto-complete connection when registered
+                    if isConnectionSheetPresented {
+                        completeConnection()
+                    } else if currentScreen == .connecting {
+                        // Auto-login flow: transition directly to active account
+                        completeConnection()
+                    }
+                case .failed:
+                    // Auto-login failed: go to account list
+                    if currentScreen == .connecting {
+                        connectingAccount = nil
+                        currentScreen = .accountList
+                    }
+                default:
+                    break
+                }
             }
 
         case .coreStateChanged, .callStateChanged, .mediaChanged:
@@ -225,9 +244,15 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        // Start connection for auto-login account
+        // Show connecting screen and start registration
         print("AppViewModel: Auto-connecting to \(autoLoginAccount.server)")
-        startConnection(for: autoLoginAccount)
+        connectingAccount = autoLoginAccount
+        currentScreen = .connecting
+
+        // Start registration
+        if let password = AccountStore.shared.getPassword(for: autoLoginAccount.id) {
+            registerAccountWithCore(autoLoginAccount, password: password)
+        }
     }
 
     /// Shows the account configuration sheet for adding a new account.
@@ -350,6 +375,22 @@ final class AppViewModel: ObservableObject {
 
         connectingAccount = nil
         isConnectionSheetPresented = false
+        updateRegistrationStatus()
+    }
+
+    /// Cancels auto-connect and goes to account list.
+    func cancelAutoConnect() {
+        if let account = connectingAccount, let bridgeID = accountIDMapping[account.id] {
+            do {
+                try TonePhoneCore.shared.unregisterAccount(bridgeID)
+            } catch {
+                // Ignore errors when canceling
+            }
+            accountStates[bridgeID] = .unregistered
+        }
+
+        connectingAccount = nil
+        currentScreen = .accountList
         updateRegistrationStatus()
     }
 
