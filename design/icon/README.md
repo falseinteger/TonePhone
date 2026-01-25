@@ -1,4 +1,4 @@
-TonePhone app icon source.
+# TonePhone app icon source
 
 - Created with Icon Composer
 - Export 1024×1024 PNG
