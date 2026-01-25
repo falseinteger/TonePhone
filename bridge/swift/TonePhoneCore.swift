@@ -302,6 +302,9 @@ public final class TonePhoneCore {
         // Start bridge
         let startResult = tp_start()
         guard startResult == TP_OK else {
+            tp_set_event_callback(nil, nil)
+            tp_shutdown()
+            isInitialized = false
             throw TonePhoneError(from: startResult)
         }
     }
@@ -343,19 +346,18 @@ public final class TonePhoneCore {
         }, context)
     }
 
-    private func handleEvent(_ event: tp_event_t) {
-        // Convert C event to Swift event and dispatch to main thread
+    /// Handle events from C callback (runs on baresip's event thread).
+    /// Marked nonisolated to allow calling from non-main-actor context.
+    private nonisolated func handleEvent(_ event: tp_event_t) {
+        // Convert C event to Swift event (safe: String(cString:) copies data immediately)
         let swiftEvent: TonePhoneEvent
+        var newCoreState: CoreState?
 
         switch event.type {
         case TP_EVENT_CORE_STATE_CHANGED:
             let state = CoreState(from: event.data.core.state)
             swiftEvent = .coreStateChanged(state)
-
-            // Update published state on main thread
-            DispatchQueue.main.async { [weak self] in
-                self?.coreState = state
-            }
+            newCoreState = state
 
         case TP_EVENT_ACCOUNT_STATE_CHANGED:
             let accountID = AccountID(rawValue: event.data.account.id)
@@ -384,9 +386,12 @@ public final class TonePhoneCore {
             return
         }
 
-        // Dispatch to main thread
-        DispatchQueue.main.async { [weak self] in
-            self?.eventSubject.send(swiftEvent)
+        // Dispatch to main actor for state updates and event publishing
+        Task { @MainActor in
+            if let state = newCoreState {
+                self.coreState = state
+            }
+            self.eventSubject.send(swiftEvent)
         }
     }
 }
