@@ -18,6 +18,8 @@ struct ContentView: View {
     var body: some View {
         Group {
             switch viewModel.currentScreen {
+            case .connecting:
+                LaunchConnectingView(viewModel: viewModel)
             case .accountList:
                 AccountListView(viewModel: viewModel)
             case .activeAccount:
