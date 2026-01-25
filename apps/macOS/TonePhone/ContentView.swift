@@ -2,18 +2,32 @@
 //  ContentView.swift
 //  TonePhone
 //
-//  Created by Dmitrii Poroshkov on 1/24/26.
+//  Main content view for the TonePhone application.
 //
 
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var viewModel = AppViewModel()
+
     var body: some View {
         VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
+            Spacer()
+
+            // App icon
+            Image(systemName: "phone.fill")
+                .font(.system(size: 48))
                 .foregroundStyle(.tint)
-            Text("Hello, world!")
+
+            Text("TonePhone")
+                .font(.title)
+                .padding(.top, 8)
+
+            Spacer()
+
+            // Registration status at the bottom
+            RegistrationStatusView(status: viewModel.registrationStatus)
+                .padding(.bottom, 20)
         }
         .padding()
     }
