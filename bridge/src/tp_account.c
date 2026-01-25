@@ -48,6 +48,33 @@ static struct {
  * ============================================================================= */
 
 /**
+ * @brief Post an account failure event
+ *
+ * Used when registration fails immediately (before baresip can fire an event).
+ */
+static void post_account_failure_event(tp_account_id_t id, const char *reason)
+{
+    tp_event_callback_t cb;
+    void *ctx;
+
+    tp_get_event_callback(&cb, &ctx);
+    if (!cb)
+        return;
+
+    tp_event_t event = {
+        .type = TP_EVENT_ACCOUNT_STATE_CHANGED,
+        .data.account = {
+            .id = id,
+            .state = TP_ACCOUNT_STATE_FAILED,
+            .reason = reason,
+        },
+    };
+
+    info("tp_account: posting failure event for account %u: %s\n", id, reason);
+    cb(&event, ctx);
+}
+
+/**
  * @brief Find an account entry by ID
  */
 static account_entry_t *find_account(tp_account_id_t id)
@@ -212,7 +239,8 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
             int reg_err = ua_register(ua);
             if (reg_err) {
                 warning("tp_account: ua_register failed: %m\n", reg_err);
-                /* Account is still added, registration will be retried */
+                /* Fire a failure event manually since baresip won't */
+                post_account_failure_event(entry->id, "Registration failed");
             }
         }
     }
