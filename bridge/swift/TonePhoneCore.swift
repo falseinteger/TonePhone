@@ -332,6 +332,103 @@ public final class TonePhoneCore {
         coreState = .idle
     }
 
+    // MARK: - Account Management
+
+    /// Add a new SIP account.
+    ///
+    /// - Parameters:
+    ///   - sipURI: The SIP URI (e.g., "sip:user@domain.com")
+    ///   - password: The SIP password
+    ///   - displayName: Optional display name
+    ///   - registerImmediately: Whether to register immediately after adding
+    /// - Returns: The account ID assigned to the new account
+    /// - Throws: `TonePhoneError` if adding the account fails
+    public func addAccount(
+        sipURI: String,
+        password: String,
+        displayName: String? = nil,
+        registerImmediately: Bool = true
+    ) throws -> AccountID {
+        var config = tp_account_config_t()
+
+        // Use withCString to ensure strings stay valid during the C call
+        return try sipURI.withCString { sipURIPtr in
+            try password.withCString { passwordPtr in
+                config.sip_uri = sipURIPtr
+                config.password = passwordPtr
+                config.register_on_add = registerImmediately
+                config.display_name = nil
+                config.auth_user = nil
+                config.outbound_proxy = nil
+                config.transport = nil
+
+                if let displayName = displayName {
+                    return try displayName.withCString { displayNamePtr in
+                        config.display_name = displayNamePtr
+                        return try addAccountWithConfig(&config)
+                    }
+                } else {
+                    return try addAccountWithConfig(&config)
+                }
+            }
+        }
+    }
+
+    private func addAccountWithConfig(_ config: inout tp_account_config_t) throws -> AccountID {
+        var accountID: tp_account_id_t = TP_INVALID_ID
+
+        let result = tp_account_add(&config, &accountID)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+
+        return AccountID(rawValue: accountID)
+    }
+
+    /// Remove an account.
+    ///
+    /// - Parameter accountID: The account ID to remove
+    /// - Throws: `TonePhoneError` if removal fails
+    public func removeAccount(_ accountID: AccountID) throws {
+        let result = tp_account_remove(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Register an account with the SIP server.
+    ///
+    /// - Parameter accountID: The account ID to register
+    /// - Throws: `TonePhoneError` if registration request fails
+    public func registerAccount(_ accountID: AccountID) throws {
+        let result = tp_account_register(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Unregister an account from the SIP server.
+    ///
+    /// - Parameter accountID: The account ID to unregister
+    /// - Throws: `TonePhoneError` if unregistration request fails
+    public func unregisterAccount(_ accountID: AccountID) throws {
+        let result = tp_account_unregister(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Set the default account for outgoing calls.
+    ///
+    /// - Parameter accountID: The account ID to set as default
+    /// - Throws: `TonePhoneError` if setting default fails
+    public func setDefaultAccount(_ accountID: AccountID) throws {
+        let result = tp_account_set_default(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
     // MARK: - Event Handling
 
     private func registerEventCallback() {
