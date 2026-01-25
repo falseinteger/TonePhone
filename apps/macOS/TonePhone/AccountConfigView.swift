@@ -8,11 +8,7 @@
 import SwiftUI
 
 /// View for configuring a SIP account.
-///
-/// Displays input fields for SIP server, username, password, and display name.
-/// Validates required fields before allowing save.
 struct AccountConfigView: View {
-    /// The environment dismiss action.
     @Environment(\.dismiss) private var dismiss
 
     /// Callback when account is saved.
@@ -43,8 +39,6 @@ struct AccountConfigView: View {
     // Delete confirmation
     @State private var showDeleteConfirmation = false
 
-    /// Creates a new account configuration view.
-    /// - Parameter account: Existing account to edit, or nil for new account.
     init(account: SIPAccount? = nil) {
         self.existingAccount = account
     }
@@ -52,115 +46,76 @@ struct AccountConfigView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            Text(isEditing ? "Edit Account" : "Add Account")
-                .font(.headline)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+            headerView
 
             Divider()
 
-            // Form fields
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SIP Server")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    TextField("sip.example.com", text: $server)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("SIP Server Address")
-                }
+            // Form content
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Server section
+                    FormSection(title: "Server") {
+                        FormField(label: "SIP Server", placeholder: "sip.example.com", text: $server)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Username")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    TextField("username", text: $username)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("SIP Username")
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Password")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("SIP Password")
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Display Name (optional)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    TextField("Your Name", text: $displayName)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Display Name")
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Transport")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Picker("Transport", selection: $transport) {
-                        ForEach(SIPTransport.allCases, id: \.self) { t in
-                            Text(t.displayName).tag(t)
+                        FormRow(label: "Transport") {
+                            Picker("", selection: $transport) {
+                                ForEach(SIPTransport.allCases, id: \.self) { t in
+                                    Text(t.displayName).tag(t)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .accessibilityLabel("Transport Protocol")
+
+                    // Credentials section
+                    FormSection(title: "Credentials") {
+                        FormField(label: "Username", placeholder: "username", text: $username)
+                        FormSecureField(label: "Password", placeholder: "Required", text: $password)
+                    }
+
+                    // Profile section
+                    FormSection(title: "Profile") {
+                        FormField(label: "Display Name", placeholder: "Optional", text: $displayName)
+                    }
+
+                    // Options section
+                    FormSection(title: "Options") {
+                        FormToggle(
+                            label: "Auto-connect",
+                            description: "Connect automatically when app launches",
+                            isOn: $autoLogin
+                        )
+
+                        FormToggle(
+                            label: "Default Account",
+                            description: "Use for outgoing calls",
+                            isOn: $isDefault
+                        )
+                    }
+
+                    // Validation error
+                    if showValidationError {
+                        HStack {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(.red)
+                            Text(validationMessage)
+                                .font(.system(size: 12))
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                    }
                 }
-
-                Divider()
-                    .padding(.vertical, 4)
-
-                // Account options
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Auto-connect on launch", isOn: $autoLogin)
-                        .accessibilityLabel("Auto-connect on app launch")
-
-                    Toggle("Default account for calls", isOn: $isDefault)
-                        .accessibilityLabel("Set as default account")
-                }
-
-                if showValidationError {
-                    Text(validationMessage)
-                        .foregroundColor(.red)
-                        .font(.callout)
-                }
+                .padding(.vertical, 20)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
 
             Divider()
 
-            // Buttons
-            HStack {
-                if isEditing {
-                    Button("Delete", role: .destructive) {
-                        showDeleteConfirmation = true
-                    }
-                    .accessibilityLabel("Delete Account")
-                }
-
-                Spacer()
-
-                Button("Cancel", role: .cancel) {
-                    dismiss()
-                }
-                .keyboardShortcut(.escape)
-                .accessibilityLabel("Cancel")
-
-                Button("Save") {
-                    saveAccount()
-                }
-                .keyboardShortcut(.return)
-                .buttonStyle(.borderedProminent)
-                .disabled(!isFormValid)
-                .accessibilityLabel("Save Account")
-            }
-            .padding()
+            // Footer buttons
+            footerView
         }
-        .frame(width: 400, height: 480)
+        .frame(width: 420, height: 520)
         .onAppear {
             loadExistingAccount()
         }
@@ -181,14 +136,107 @@ struct AccountConfigView: View {
         }
     }
 
-    /// Whether the form has all required fields filled.
+    // MARK: - Header
+
+    private var headerView: some View {
+        HStack {
+            // Avatar preview
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 40, height: 40)
+
+                if !displayName.isEmpty || !username.isEmpty {
+                    Text(previewInitials)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(.accentColor)
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.accentColor)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isEditing ? "Edit Account" : "New Account")
+                    .font(.headline)
+
+                if !server.isEmpty || !username.isEmpty {
+                    Text(previewSubtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+
+    private var previewInitials: String {
+        let name = displayName.isEmpty ? username : displayName
+        let components = name.split(separator: " ")
+        if components.count >= 2 {
+            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
+    private var previewSubtitle: String {
+        if !username.isEmpty && !server.isEmpty {
+            return "\(username)@\(server)"
+        } else if !server.isEmpty {
+            return server
+        } else if !username.isEmpty {
+            return username
+        }
+        return ""
+    }
+
+    // MARK: - Footer
+
+    private var footerView: some View {
+        HStack(spacing: 12) {
+            if isEditing {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundColor(.red)
+            }
+
+            Spacer()
+
+            Button("Cancel") {
+                dismiss()
+            }
+            .keyboardShortcut(.escape)
+
+            Button("Save") {
+                saveAccount()
+            }
+            .keyboardShortcut(.return)
+            .buttonStyle(.borderedProminent)
+            .disabled(!isFormValid)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Validation
+
     private var isFormValid: Bool {
         !server.trimmingCharacters(in: .whitespaces).isEmpty &&
         !username.trimmingCharacters(in: .whitespaces).isEmpty &&
         !password.isEmpty
     }
 
-    /// Loads existing account data into form fields.
+    // MARK: - Actions
+
     private func loadExistingAccount() {
         guard let account = existingAccount else { return }
 
@@ -199,15 +247,12 @@ struct AccountConfigView: View {
         isDefault = account.isDefault
         autoLogin = account.autoLogin
 
-        // Load password from Keychain
         if let storedPassword = AccountStore.shared.getPassword(for: account.id) {
             password = storedPassword
         }
     }
 
-    /// Validates and saves the account.
     private func saveAccount() {
-        // Validate required fields
         let trimmedServer = server.trimmingCharacters(in: .whitespaces)
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
 
@@ -226,7 +271,6 @@ struct AccountConfigView: View {
             return
         }
 
-        // Create or update account
         let account = SIPAccount(
             id: existingAccount?.id ?? UUID(),
             server: trimmedServer,
@@ -241,30 +285,125 @@ struct AccountConfigView: View {
         dismiss()
     }
 
-    /// Shows a validation error.
     private func showError(_ message: String) {
         validationMessage = message
         showValidationError = true
     }
 }
 
+// MARK: - Form Components
+
+private struct FormSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 20)
+
+            VStack(spacing: 0) {
+                content
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(8)
+            .padding(.horizontal, 20)
+        }
+    }
+}
+
+private struct FormField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        FormRow(label: label) {
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+        }
+    }
+}
+
+private struct FormSecureField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        FormRow(label: label) {
+            SecureField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+        }
+    }
+}
+
+private struct FormRow<Content: View>: View {
+    let label: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.primary)
+                .frame(width: 100, alignment: .trailing)
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct FormToggle: View {
+    let label: String
+    let description: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
 // MARK: - View Modifiers
 
 extension AccountConfigView {
-    /// Sets the callback to be called when the account is saved.
     func onSave(_ handler: @escaping (SIPAccount, String) -> Void) -> AccountConfigView {
         var copy = self
         copy.onSave = handler
         return copy
     }
 
-    /// Sets the callback to be called when the account is deleted.
     func onDelete(_ handler: @escaping (UUID) -> Void) -> AccountConfigView {
         var copy = self
         copy.onDelete = handler
         return copy
     }
 }
+
+// MARK: - Preview
 
 #Preview("New Account") {
     AccountConfigView()
