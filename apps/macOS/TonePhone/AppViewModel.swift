@@ -10,12 +10,19 @@ import SwiftUI
 import Combine
 
 /// Simplified registration status for UI display.
+///
+/// Aggregates multiple account states into a single status for the main window.
 enum RegistrationStatus: Equatable {
+    /// No SIP accounts have been configured.
     case notConfigured
+    /// At least one account is currently registering.
     case registering
+    /// At least one account is successfully registered.
     case registered
+    /// All accounts have failed to register.
     case failed(reason: String?)
 
+    /// Human-readable text for display in the UI.
     var displayText: String {
         switch self {
         case .notConfigured:
@@ -32,6 +39,7 @@ enum RegistrationStatus: Equatable {
         }
     }
 
+    /// Color for the status indicator circle.
     var indicatorColor: Color {
         switch self {
         case .notConfigured:
@@ -47,6 +55,9 @@ enum RegistrationStatus: Equatable {
 }
 
 /// Main view model for tracking application state.
+///
+/// Subscribes to `TonePhoneCore.events` and maintains a map of account states.
+/// Publishes an aggregated `registrationStatus` for the UI to display.
 @MainActor
 final class AppViewModel: ObservableObject {
     /// Current registration status for display.
@@ -55,13 +66,15 @@ final class AppViewModel: ObservableObject {
     /// Tracked account states by ID.
     private var accountStates: [AccountID: AccountState] = [:]
 
-    /// Combine cancellables.
+    /// Combine cancellables for event subscriptions.
     private var cancellables = Set<AnyCancellable>()
 
+    /// Creates the view model and subscribes to TonePhoneCore events.
     init() {
         subscribeToEvents()
     }
 
+    /// Subscribes to TonePhoneCore events to track account state changes.
     private func subscribeToEvents() {
         TonePhoneCore.shared.events
             .receive(on: DispatchQueue.main)
@@ -71,6 +84,8 @@ final class AppViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Handles incoming events from TonePhoneCore.
+    /// - Parameter event: The event to process.
     private func handleEvent(_ event: TonePhoneEvent) {
         switch event {
         case .accountStateChanged(let accountID, let state):
@@ -83,17 +98,19 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Recalculates the aggregated registration status from all account states.
+    ///
+    /// Priority order:
+    /// 1. If any account is registered → `.registered`
+    /// 2. If any account is registering → `.registering`
+    /// 3. If any account failed → `.failed` with first error reason
+    /// 4. Otherwise → `.notConfigured`
     private func updateRegistrationStatus() {
         // If no accounts, show not configured
         guard !accountStates.isEmpty else {
             registrationStatus = .notConfigured
             return
         }
-
-        // Priority: if any account is registered, show registered
-        // If any is registering, show registering
-        // If all failed, show failed with first error
-        // Otherwise show not configured
 
         var hasRegistered = false
         var hasRegistering = false
