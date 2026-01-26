@@ -9,7 +9,8 @@ import SwiftUI
 
 /// Dialpad view for entering phone numbers or SIP URIs to make calls.
 ///
-/// Follows macOS Human Interface Guidelines with keyboard-first interaction.
+/// Follows macOS Human Interface Guidelines with keyboard-first interaction,
+/// proper typography, and native control styling.
 struct DialpadView: View {
     /// Callback when the user initiates a call.
     let onCall: (String) -> Void
@@ -20,134 +21,126 @@ struct DialpadView: View {
     /// Whether the input field is focused.
     @FocusState private var isInputFocused: Bool
 
-    /// Threshold for compact layout.
-    private let compactThreshold: CGFloat = 280
-
     var body: some View {
-        GeometryReader { geometry in
-            let isCompact = geometry.size.width < compactThreshold
+        VStack(spacing: 0) {
+            // Display area
+            displayArea
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
 
-            VStack(spacing: 12) {
-                Spacer(minLength: 8)
+            Divider()
+                .padding(.horizontal, 16)
 
-                // Input field
-                inputField
+            // Keypad
+            keypadGrid
+                .padding(16)
 
-                // Keypad
-                keypad(isCompact: isCompact)
+            Spacer(minLength: 0)
 
-                Spacer(minLength: 8)
-
-                // Call button
-                callButton(isCompact: isCompact)
-            }
-            .padding(.horizontal, isCompact ? 12 : 16)
-            .padding(.vertical, 12)
+            // Call button
+            callButton
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             isInputFocused = true
         }
     }
 
-    // MARK: - Input Field
+    // MARK: - Display Area
 
-    private var inputField: some View {
-        HStack(spacing: 8) {
-            TextField("Enter number or SIP URI", text: $input)
+    private var displayArea: some View {
+        VStack(spacing: 4) {
+            // Number display
+            HStack(spacing: 0) {
+                Text(input.isEmpty ? "Enter number" : input)
+                    .font(.system(size: 28, weight: .light, design: .default))
+                    .foregroundColor(input.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel(input.isEmpty ? "No number entered" : input)
+
+                // Backspace button
+                if !input.isEmpty {
+                    Button {
+                        deleteLastCharacter()
+                    } label: {
+                        Image(systemName: "delete.left")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.delete, modifiers: [])
+                    .help("Delete (⌫)")
+                    .accessibilityLabel("Delete last character")
+                }
+            }
+            .frame(height: 40)
+
+            // Hidden text field for keyboard input
+            TextField("", text: $input)
                 .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .medium, design: .monospaced))
-                .multilineTextAlignment(.center)
                 .focused($isInputFocused)
+                .frame(width: 0, height: 0)
+                .opacity(0)
                 .onSubmit {
                     initiateCall()
                 }
-                .accessibilityLabel("Phone number or SIP URI")
-                .accessibilityHint("Enter a number or SIP address to call")
-
-            if !input.isEmpty {
-                Button {
-                    input = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear input")
-            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .textBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
     }
 
-    // MARK: - Keypad
+    // MARK: - Keypad Grid
 
-    private func keypad(isCompact: Bool) -> some View {
-        let keySize: CGFloat = isCompact ? 48 : 56
-        let spacing: CGFloat = isCompact ? 6 : 8
+    private var keypadGrid: some View {
+        let spacing: CGFloat = 8
 
         return VStack(spacing: spacing) {
-            // Row 1: 1 2 3
-            HStack(spacing: spacing) {
-                DialpadKey(digit: "1", letters: nil, size: keySize, action: { appendDigit("1") })
-                DialpadKey(digit: "2", letters: "ABC", size: keySize, action: { appendDigit("2") })
-                DialpadKey(digit: "3", letters: "DEF", size: keySize, action: { appendDigit("3") })
-            }
-
-            // Row 2: 4 5 6
-            HStack(spacing: spacing) {
-                DialpadKey(digit: "4", letters: "GHI", size: keySize, action: { appendDigit("4") })
-                DialpadKey(digit: "5", letters: "JKL", size: keySize, action: { appendDigit("5") })
-                DialpadKey(digit: "6", letters: "MNO", size: keySize, action: { appendDigit("6") })
-            }
-
-            // Row 3: 7 8 9
-            HStack(spacing: spacing) {
-                DialpadKey(digit: "7", letters: "PQRS", size: keySize, action: { appendDigit("7") })
-                DialpadKey(digit: "8", letters: "TUV", size: keySize, action: { appendDigit("8") })
-                DialpadKey(digit: "9", letters: "WXYZ", size: keySize, action: { appendDigit("9") })
-            }
-
-            // Row 4: * 0 #
-            HStack(spacing: spacing) {
-                DialpadKey(digit: "*", letters: nil, size: keySize, action: { appendDigit("*") })
-                DialpadKey(digit: "0", letters: "+", size: keySize, action: { appendDigit("0") }, longPressAction: { appendDigit("+") })
-                DialpadKey(digit: "#", letters: nil, size: keySize, action: { appendDigit("#") })
+            ForEach(keypadRows, id: \.self) { row in
+                HStack(spacing: spacing) {
+                    ForEach(row, id: \.digit) { key in
+                        DialpadKey(
+                            digit: key.digit,
+                            letters: key.letters,
+                            action: { appendDigit(key.digit) },
+                            longPressAction: key.longPressDigit.map { digit in
+                                { appendDigit(digit) }
+                            }
+                        )
+                    }
+                }
             }
         }
+    }
+
+    private var keypadRows: [[KeyData]] {
+        [
+            [KeyData("1", nil), KeyData("2", "ABC"), KeyData("3", "DEF")],
+            [KeyData("4", "GHI"), KeyData("5", "JKL"), KeyData("6", "MNO")],
+            [KeyData("7", "PQRS"), KeyData("8", "TUV"), KeyData("9", "WXYZ")],
+            [KeyData("*", nil), KeyData("0", "+", longPress: "+"), KeyData("#", nil)]
+        ]
     }
 
     // MARK: - Call Button
 
-    private func callButton(isCompact: Bool) -> some View {
+    private var callButton: some View {
         Button {
             initiateCall()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "phone.fill")
-                if !isCompact {
-                    Text("Call")
-                }
-            }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(input.isEmpty ? Color.green.opacity(0.5) : Color.green)
-            )
+            Label("Call", systemImage: "phone.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CallButtonStyle(isEnabled: !input.isEmpty))
         .disabled(input.isEmpty)
         .keyboardShortcut(.return, modifiers: [])
+        .help("Call (Return)")
         .accessibilityLabel("Call")
         .accessibilityHint(input.isEmpty ? "Enter a number first" : "Call \(input)")
     }
@@ -158,10 +151,9 @@ struct DialpadView: View {
         input.append(digit)
     }
 
-    private func deleteLastDigit() {
-        if !input.isEmpty {
-            input.removeLast()
-        }
+    private func deleteLastCharacter() {
+        guard !input.isEmpty else { return }
+        input.removeLast()
     }
 
     private func initiateCall() {
@@ -171,22 +163,34 @@ struct DialpadView: View {
     }
 }
 
+// MARK: - Key Data
+
+private struct KeyData: Hashable {
+    let digit: String
+    let letters: String?
+    let longPressDigit: String?
+
+    init(_ digit: String, _ letters: String?, longPress: String? = nil) {
+        self.digit = digit
+        self.letters = letters
+        self.longPressDigit = longPress
+    }
+}
+
 // MARK: - Dialpad Key
 
 private struct DialpadKey: View {
     let digit: String
     let letters: String?
-    let size: CGFloat
     let action: () -> Void
-    var longPressAction: (() -> Void)?
+    let longPressAction: (() -> Void)?
 
     @State private var isHovered = false
     @State private var isPressed = false
 
-    init(digit: String, letters: String?, size: CGFloat, action: @escaping () -> Void, longPressAction: (() -> Void)? = nil) {
+    init(digit: String, letters: String?, action: @escaping () -> Void, longPressAction: (() -> Void)? = nil) {
         self.digit = digit
         self.letters = letters
-        self.size = size
         self.action = action
         self.longPressAction = longPressAction
     }
@@ -195,41 +199,92 @@ private struct DialpadKey: View {
         Button {
             action()
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Text(digit)
-                    .font(.system(size: size * 0.4, weight: .medium, design: .rounded))
+                    .font(.system(size: 24, weight: .regular, design: .rounded))
+                    .foregroundColor(.primary)
 
                 if let letters = letters {
                     Text(letters)
-                        .font(.system(size: size * 0.14, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.tertiaryLabel)
+                        .tracking(1)
                 }
             }
-            .frame(width: size, height: size)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovered = hovering
+            }
+        }
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5)
                 .onEnded { _ in
                     longPressAction?()
                 }
         )
-        .accessibilityLabel(digit)
-        .accessibilityHint(letters.map { "Also represents \($0)" } ?? "")
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint(longPressAction != nil ? "Hold to enter \(letters ?? "")" : "")
     }
 
     private var backgroundColor: Color {
         if isPressed {
-            return Color(nsColor: .controlAccentColor).opacity(0.3)
+            return Color(nsColor: .controlAccentColor).opacity(0.15)
         } else if isHovered {
-            return Color(nsColor: .controlColor)
+            return Color(nsColor: .controlBackgroundColor).opacity(0.8)
         } else {
-            return Color(nsColor: .controlBackgroundColor)
+            return Color(nsColor: .controlBackgroundColor).opacity(0.4)
+        }
+    }
+
+    private var accessibilityLabelText: String {
+        if let letters = letters, digit != "*" && digit != "#" {
+            return "\(digit), \(letters)"
+        }
+        return digit
+    }
+}
+
+// MARK: - Tertiary Label Color
+
+private extension Color {
+    static var tertiaryLabel: Color {
+        Color(nsColor: .tertiaryLabelColor)
+    }
+}
+
+// MARK: - Call Button Style
+
+private struct CallButtonStyle: ButtonStyle {
+    let isEnabled: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(.white)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(backgroundColor(isPressed: configuration.isPressed))
+            )
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        if !isEnabled {
+            return Color.green.opacity(0.4)
+        } else if isPressed {
+            return Color.green.opacity(0.8)
+        } else {
+            return Color.green
         }
     }
 }
@@ -240,12 +295,14 @@ private struct DialpadKey: View {
     DialpadView { uri in
         print("Call: \(uri)")
     }
-    .frame(width: 300, height: 400)
+    .frame(width: 300, height: 420)
+    .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("Compact") {
+#Preview("Dialpad - With Number") {
     DialpadView { uri in
         print("Call: \(uri)")
     }
-    .frame(width: 220, height: 380)
+    .frame(width: 300, height: 420)
+    .background(Color(nsColor: .windowBackgroundColor))
 }
