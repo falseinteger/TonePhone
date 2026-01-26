@@ -287,11 +287,19 @@ public final class TonePhoneCore {
             throw TonePhoneError.alreadyInitialized
         }
 
+        // Ensure config directory exists with minimal config
+        let effectiveConfigPath = try configPath ?? createDefaultConfigDirectory()
+
+        // Verify config file exists
+        let configFile = URL(fileURLWithPath: effectiveConfigPath).appendingPathComponent("config")
+        print("TonePhoneCore: Using config path: \(effectiveConfigPath)")
+        print("TonePhoneCore: Config file exists: \(FileManager.default.fileExists(atPath: configFile.path))")
+
         // Register event callback before init
         registerEventCallback()
 
         // Initialize bridge
-        let initResult = tp_init(configPath, logPath)
+        let initResult = tp_init(effectiveConfigPath, logPath)
         guard initResult == TP_OK else {
             tp_set_event_callback(nil, nil)
             throw TonePhoneError(from: initResult)
@@ -308,6 +316,48 @@ public final class TonePhoneCore {
             coreState = .idle
             throw TonePhoneError(from: startResult)
         }
+    }
+
+    /// Creates a default config directory with minimal baresip configuration.
+    /// - Returns: Path to the created config directory.
+    private func createDefaultConfigDirectory() throws -> String {
+        let fileManager = FileManager.default
+
+        // Get Application Support directory
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw TonePhoneError.internalError
+        }
+
+        let configDir = appSupport.appendingPathComponent("TonePhone", isDirectory: true)
+
+        // Create directory if needed
+        if !fileManager.fileExists(atPath: configDir.path) {
+            try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true)
+        }
+
+        // Create minimal config file if it doesn't exist
+        let configFile = configDir.appendingPathComponent("config")
+        if !fileManager.fileExists(atPath: configFile.path) {
+            // Minimal config - modules are statically linked, no need for module_path
+            let minimalConfig = """
+            # TonePhone minimal configuration
+
+            # Audio (AudioUnit on macOS/iOS)
+            audio_player audiounit
+            audio_source audiounit
+            audio_alert audiounit
+
+            # SIP settings
+            sip_listen 0.0.0.0:0
+
+            # Audio codec priority (g711 is always available)
+            audio_codecs g711
+
+            """
+            try minimalConfig.write(to: configFile, atomically: true, encoding: .utf8)
+        }
+
+        return configDir.path
     }
 
     /// Stop and shut down the TonePhone engine.
@@ -330,6 +380,121 @@ public final class TonePhoneCore {
         tp_shutdown()
         isInitialized = false
         coreState = .idle
+    }
+
+    // MARK: - Account Management
+
+    /// Add a new SIP account.
+    ///
+    /// - Parameters:
+    ///   - sipURI: The SIP URI (e.g., "sip:user@domain.com")
+    ///   - password: The SIP password
+    ///   - displayName: Optional display name
+    ///   - transport: Transport protocol ("udp", "tcp", or "tls")
+    ///   - registerImmediately: Whether to register immediately after adding
+    /// - Returns: The account ID assigned to the new account
+    /// - Throws: `TonePhoneError` if adding the account fails
+    public func addAccount(
+        sipURI: String,
+        password: String,
+        displayName: String? = nil,
+        transport: String? = nil,
+        registerImmediately: Bool = true
+    ) throws -> AccountID {
+        var config = tp_account_config_t()
+
+        // Use withCString to ensure strings stay valid during the C call
+        return try sipURI.withCString { sipURIPtr in
+            try password.withCString { passwordPtr in
+                config.sip_uri = sipURIPtr
+                config.password = passwordPtr
+                config.register_on_add = registerImmediately
+                config.display_name = nil
+                config.auth_user = nil
+                config.outbound_proxy = nil
+                config.transport = nil
+
+                // Handle optional display name
+                let withDisplayName: (inout tp_account_config_t) throws -> AccountID = { cfg in
+                    if let displayName = displayName {
+                        return try displayName.withCString { displayNamePtr in
+                            cfg.display_name = displayNamePtr
+                            return try self.addAccountWithTransport(&cfg, transport: transport)
+                        }
+                    } else {
+                        return try self.addAccountWithTransport(&cfg, transport: transport)
+                    }
+                }
+
+                return try withDisplayName(&config)
+            }
+        }
+    }
+
+    private func addAccountWithTransport(_ config: inout tp_account_config_t, transport: String?) throws -> AccountID {
+        if let transport = transport {
+            return try transport.withCString { transportPtr in
+                config.transport = transportPtr
+                return try addAccountWithConfig(&config)
+            }
+        } else {
+            return try addAccountWithConfig(&config)
+        }
+    }
+
+    private func addAccountWithConfig(_ config: inout tp_account_config_t) throws -> AccountID {
+        var accountID: tp_account_id_t = TP_INVALID_ID
+
+        let result = tp_account_add(&config, &accountID)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+
+        return AccountID(rawValue: accountID)
+    }
+
+    /// Remove an account.
+    ///
+    /// - Parameter accountID: The account ID to remove
+    /// - Throws: `TonePhoneError` if removal fails
+    public func removeAccount(_ accountID: AccountID) throws {
+        let result = tp_account_remove(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Register an account with the SIP server.
+    ///
+    /// - Parameter accountID: The account ID to register
+    /// - Throws: `TonePhoneError` if registration request fails
+    public func registerAccount(_ accountID: AccountID) throws {
+        let result = tp_account_register(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Unregister an account from the SIP server.
+    ///
+    /// - Parameter accountID: The account ID to unregister
+    /// - Throws: `TonePhoneError` if unregistration request fails
+    public func unregisterAccount(_ accountID: AccountID) throws {
+        let result = tp_account_unregister(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Set the default account for outgoing calls.
+    ///
+    /// - Parameter accountID: The account ID to set as default
+    /// - Throws: `TonePhoneError` if setting default fails
+    public func setDefaultAccount(_ accountID: AccountID) throws {
+        let result = tp_account_set_default(accountID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
     }
 
     // MARK: - Event Handling

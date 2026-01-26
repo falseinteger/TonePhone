@@ -24,29 +24,6 @@ static bool g_events_registered = false;
  * ID Mapping
  * ============================================================================= */
 
-/*
- * For now, we use placeholder ID generation based on pointer addresses.
- * The actual account and call management (Issues #9, #10) will implement
- * proper ID tracking with lookup tables.
- *
- * These functions provide a consistent interface that those modules will
- * replace with proper implementations.
- */
-
-/**
- * @brief Get account ID for a UA (placeholder - returns hash of pointer)
- */
-static tp_account_id_t get_account_id_for_ua(const struct ua *ua)
-{
-    if (!ua)
-        return TP_INVALID_ID;
-
-    /* Placeholder: use lower 32 bits of pointer as ID */
-    /* Real implementation will use proper tracking */
-    uintptr_t ptr = (uintptr_t)ua;
-    return (tp_account_id_t)(ptr & 0xFFFFFFFF);
-}
-
 /**
  * @brief Get call ID for a call (placeholder - returns hash of pointer)
  */
@@ -155,6 +132,13 @@ static void handle_account_event(enum bevent_ev ev, struct bevent *event)
     if (!ua)
         return;
 
+    /* Look up our account ID from the UA pointer */
+    tp_account_id_t account_id = tp_account_find_id_by_ua(ua);
+    if (account_id == TP_INVALID_ID) {
+        warning("tp_events: unknown UA in account event\n");
+        return;
+    }
+
     /* Get callback (thread-safe) */
     tp_get_event_callback(&cb, &ctx);
     if (!cb)
@@ -165,11 +149,13 @@ static void handle_account_event(enum bevent_ev ev, struct bevent *event)
     tp_event_t tp_event = {
         .type = TP_EVENT_ACCOUNT_STATE_CHANGED,
         .data.account = {
-            .id = get_account_id_for_ua(ua),
+            .id = account_id,
             .state = state,
             .reason = text,
         },
     };
+
+    info("tp_events: account %u state changed to %d\n", account_id, state);
 
     cb(&tp_event, ctx);
 }

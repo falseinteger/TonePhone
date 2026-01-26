@@ -20,6 +20,7 @@
 		F0000001AAAAAAAA0000000B /* libopus.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA0000000B /* libopus.a */; };
 		F0000001BBBBBBBB00000001 /* tp_core.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000001 /* tp_core.c */; };
 		F0000001BBBBBBBB00000002 /* tp_events.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000002 /* tp_events.c */; };
+		F0000001BBBBBBBB00000003 /* tp_account.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000005 /* tp_account.c */; };
 		F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */; };
 /* End PBXBuildFile section */
 
@@ -40,10 +41,11 @@
 		F0000002BBBBBBBB00000002 /* tp_events.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_events.c; path = ../../bridge/src/tp_events.c; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000003 /* tp_internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = tp_internal.h; path = ../../bridge/src/tp_internal.h; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TonePhoneCore.swift; path = ../../bridge/swift/TonePhoneCore.swift; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000005 /* tp_account.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_account.c; path = ../../bridge/src/tp_account.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F0000004CCCCCCCC00000001 /* Exceptions for "TonePhone" folder in "TonePhone" target */ = {
+		F0000004CCCCCCCC00000001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -53,7 +55,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AB6132BF2F257E860061E7F9 /* TonePhone */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (F0000004CCCCCCCC00000001 /* Exceptions for "TonePhone" folder in "TonePhone" target */, ); explicitFileTypes = {}; explicitFolders = (); path = TonePhone; sourceTree = "<group>"; };
+		AB6132BF2F257E860061E7F9 /* TonePhone */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (F0000004CCCCCCCC00000001 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = TonePhone; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +121,7 @@
 			children = (
 				F0000002BBBBBBBB00000001 /* tp_core.c */,
 				F0000002BBBBBBBB00000002 /* tp_events.c */,
+				F0000002BBBBBBBB00000005 /* tp_account.c */,
 				F0000002BBBBBBBB00000003 /* tp_internal.h */,
 				F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */,
 			);
@@ -201,6 +204,7 @@
 			files = (
 				F0000001BBBBBBBB00000001 /* tp_core.c in Sources */,
 				F0000001BBBBBBBB00000002 /* tp_events.c in Sources */,
+				F0000001BBBBBBBB00000003 /* tp_account.c in Sources */,
 				F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
