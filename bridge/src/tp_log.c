@@ -142,6 +142,10 @@ static void rotate_logs(void)
 
     /* Open new log file */
     g_log.file = fopen(g_log.path, "a");
+    if (!g_log.file) {
+        fprintf(stderr, "tp_log: failed to reopen log after rotation: %s\n",
+                g_log.path);
+    }
     g_log.current_size = 0;
 }
 
@@ -155,9 +159,14 @@ static void write_log(tp_log_level_t level, const char *msg)
 
     /* Get timestamp */
     time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
+    struct tm tm_buf;
+    struct tm *tm_info = localtime_r(&now, &tm_buf);
     char timestamp[32];
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+    if (tm_info) {
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+    } else {
+        timestamp[0] = '\0';
+    }
 
     /* Write to file */
     int written = fprintf(g_log.file, "%s [%s] %s",
