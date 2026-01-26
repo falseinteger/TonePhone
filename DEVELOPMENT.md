@@ -75,7 +75,7 @@ This downloads OpenSSL 3.4.1, verifies the checksum, and builds static libraries
 
 **Expected output:**
 
-```
+```text
 === Building OpenSSL 3.4.1 ===
 Downloading...
 Verifying checksum...
@@ -99,7 +99,7 @@ This builds static libraries for all platforms using CMake and Ninja.
 
 **Expected output:**
 
-```
+```text
 === Building libre for macos-arm64 (arm64) ===
 ...
 === Building baresip for macos-arm64 (arm64) ===
@@ -119,7 +119,7 @@ Combine the built libraries into XCFrameworks for Xcode:
 
 **Expected output:**
 
-```
+```text
 === Creating fat libraries ===
 === Creating XCFrameworks ===
 ...
