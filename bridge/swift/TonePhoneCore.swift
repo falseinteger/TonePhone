@@ -343,7 +343,7 @@ public final class TonePhoneCore {
             let minimalConfig = """
             # TonePhone configuration
 
-            # Modules (statically linked, .so extension still required)
+            # Modules (statically linked, .so extension is optional)
             module g711.so
             module opus.so
             module audiounit.so
