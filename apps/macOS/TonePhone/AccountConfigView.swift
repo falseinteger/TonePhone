@@ -29,7 +29,6 @@ struct AccountConfigView: View {
     @State private var password: String = ""
     @State private var displayName: String = ""
     @State private var transport: SIPTransport = .udp
-    @State private var isDefault: Bool = false
     @State private var autoLogin: Bool = false
 
     // Validation state
@@ -85,12 +84,6 @@ struct AccountConfigView: View {
                             label: "Auto-connect",
                             description: "Connect automatically when app launches",
                             isOn: $autoLogin
-                        )
-
-                        FormToggle(
-                            label: "Default Account",
-                            description: "Use for outgoing calls",
-                            isOn: $isDefault
                         )
                     }
 
@@ -244,7 +237,6 @@ struct AccountConfigView: View {
         username = account.username
         displayName = account.displayName
         transport = account.transport
-        isDefault = account.isDefault
         autoLogin = account.autoLogin
 
         if let storedPassword = AccountStore.shared.getPassword(for: account.id) {
@@ -280,7 +272,6 @@ struct AccountConfigView: View {
             username: trimmedUsername,
             displayName: displayName.trimmingCharacters(in: .whitespaces),
             transport: transport,
-            isDefault: isDefault,
             autoLogin: autoLogin
         )
 
@@ -417,6 +408,6 @@ extension AccountConfigView {
         server: "sip.example.com",
         username: "user",
         displayName: "Test User",
-        isDefault: true
+        autoLogin: true
     ))
 }
