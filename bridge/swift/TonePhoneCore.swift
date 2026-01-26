@@ -338,20 +338,32 @@ public final class TonePhoneCore {
         // Create minimal config file if it doesn't exist
         let configFile = configDir.appendingPathComponent("config")
         if !fileManager.fileExists(atPath: configFile.path) {
-            // Minimal config - modules are statically linked, no need for module_path
+            // Minimal config for statically-linked baresip
+            // Module lines are required to load static modules
             let minimalConfig = """
-            # TonePhone minimal configuration
+            # TonePhone configuration
 
-            # Audio (AudioUnit on macOS/iOS)
+            # Modules (statically linked, .so extension still required)
+            module g711.so
+            module opus.so
+            module audiounit.so
+            module stun.so
+            module turn.so
+            module ice.so
+            module srtp.so
+            module dtls_srtp.so
+            module account.so
+
+            # Audio device (AudioUnit on macOS/iOS)
             audio_player audiounit
             audio_source audiounit
             audio_alert audiounit
 
+            # Audio codec priority
+            audio_codecs opus,g711
+
             # SIP settings
             sip_listen 0.0.0.0:0
-
-            # Audio codec priority (g711 is always available)
-            audio_codecs g711
 
             """
             try minimalConfig.write(to: configFile, atomically: true, encoding: .utf8)
