@@ -24,6 +24,8 @@ struct ContentView: View {
                 AccountListView(viewModel: viewModel)
             case .activeAccount:
                 ActiveAccountView(viewModel: viewModel)
+            case .activeCall:
+                ActiveCallView(viewModel: viewModel)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -25,17 +25,17 @@ static bool g_events_registered = false;
  * ============================================================================= */
 
 /**
- * @brief Get call ID for a call (placeholder - returns hash of pointer)
+ * @brief Get call ID for a call
+ *
+ * Looks up the call in our tracking system.
+ * For incoming calls not yet registered, returns TP_INVALID_ID.
  */
 static tp_call_id_t get_call_id_for_call(const struct call *call)
 {
     if (!call)
         return TP_INVALID_ID;
 
-    /* Placeholder: use lower 32 bits of pointer as ID */
-    /* Real implementation will use proper tracking */
-    uintptr_t ptr = (uintptr_t)call;
-    return (tp_call_id_t)(ptr & 0xFFFFFFFF);
+    return tp_call_find_id_by_ptr(call);
 }
 
 /* =============================================================================
@@ -168,6 +168,7 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
     tp_event_callback_t cb;
     void *ctx;
     tp_call_state_t state;
+    tp_call_id_t call_id;
 
     if (!map_call_event(ev, &state))
         return;
@@ -175,6 +176,28 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
     struct call *call = bevent_get_call(event);
     if (!call)
         return;
+
+    /* For incoming calls, register them first */
+    if (ev == BEVENT_CALL_INCOMING) {
+        call_id = tp_call_register_incoming(call);
+        if (call_id == TP_INVALID_ID) {
+            warning("tp_events: failed to register incoming call\n");
+            return;
+        }
+        info("tp_events: registered incoming call %u\n", call_id);
+    } else {
+        call_id = get_call_id_for_call(call);
+        if (call_id == TP_INVALID_ID) {
+            /* Call not tracked - this can happen for calls we didn't initiate */
+            warning("tp_events: unknown call in event %d\n", ev);
+            return;
+        }
+    }
+
+    /* Unregister call when it ends */
+    if (state == TP_CALL_STATE_ENDED) {
+        tp_call_unregister(call_id);
+    }
 
     /* Get callback (thread-safe) */
     tp_get_event_callback(&cb, &ctx);
@@ -187,12 +210,14 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
     tp_event_t tp_event = {
         .type = TP_EVENT_CALL_STATE_CHANGED,
         .data.call = {
-            .id = get_call_id_for_call(call),
+            .id = call_id,
             .state = state,
             .remote_uri = peer_uri,
             .reason = (state == TP_CALL_STATE_ENDED) ? text : NULL,
         },
     };
+
+    info("tp_events: call %u state changed to %d\n", call_id, state);
 
     cb(&tp_event, ctx);
 }
