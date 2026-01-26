@@ -21,7 +21,9 @@ struct ActiveAccountView: View {
 
             // Dialpad
             DialpadView { uri in
-                viewModel.makeCall(to: formatURI(uri))
+                let formatted = formatURI(uri)
+                guard !formatted.isEmpty else { return }
+                viewModel.makeCall(to: formatted)
             }
 
             // Status bar
