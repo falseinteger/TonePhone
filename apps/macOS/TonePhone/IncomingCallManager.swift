@@ -31,14 +31,21 @@ final class IncomingCallManager: NSObject, ObservableObject {
     /// Callback for declining call from notification.
     var onDecline: (() -> Void)?
 
+    /// Whether notifications have been configured.
+    private var notificationsConfigured = false
+
     private override init() {
         super.init()
-        setupNotifications()
+        // Don't access UNUserNotificationCenter here - app may not be fully initialized
     }
 
     // MARK: - Notification Setup
 
-    private func setupNotifications() {
+    /// Sets up notification categories and delegate. Must be called after app launch.
+    private func setupNotificationsIfNeeded() {
+        guard !notificationsConfigured else { return }
+        notificationsConfigured = true
+
         let center = UNUserNotificationCenter.current()
         center.delegate = self
 
@@ -65,15 +72,20 @@ final class IncomingCallManager: NSObject, ObservableObject {
         center.setNotificationCategories([callCategory])
     }
 
-    /// Requests notification permission from the user.
+    /// Requests notification permission from the user. Call after app has launched.
     func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .sound, .badge]
-        ) { granted, error in
-            if let error = error {
-                print("IncomingCallManager: Notification permission error: \(error)")
-            } else {
-                print("IncomingCallManager: Notification permission granted: \(granted)")
+        // Defer to next run loop to ensure app is fully initialized
+        DispatchQueue.main.async { [weak self] in
+            self?.setupNotificationsIfNeeded()
+
+            UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge]
+            ) { granted, error in
+                if let error = error {
+                    print("IncomingCallManager: Notification permission error: \(error)")
+                } else {
+                    print("IncomingCallManager: Notification permission granted: \(granted)")
+                }
             }
         }
     }
@@ -186,6 +198,9 @@ final class IncomingCallManager: NSObject, ObservableObject {
     // MARK: - System Notification
 
     private func postIncomingCallNotification(caller: String) {
+        // Ensure notifications are configured before posting
+        setupNotificationsIfNeeded()
+
         let content = UNMutableNotificationContent()
         content.title = "Incoming Call"
         content.body = caller
