@@ -664,6 +664,17 @@ final class AppViewModel: ObservableObject {
 
         do {
             try TonePhoneCore.shared.hangupCall(callID)
+            // Immediately show ended state and return to previous screen
+            callState = .ended(reason: nil)
+            stopCallDurationTimer()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.clearCallState()
+                if self?.activeAccount != nil {
+                    self?.currentScreen = .activeAccount
+                } else {
+                    self?.currentScreen = .accountList
+                }
+            }
         } catch {
             errorMessage = "Failed to hang up call: \(error.localizedDescription)"
             print("AppViewModel: Failed to hang up call: \(error)")
@@ -697,7 +708,8 @@ final class AppViewModel: ObservableObject {
         let newHoldState = !isOnHold
         do {
             try TonePhoneCore.shared.holdCall(callID, hold: newHoldState)
-            // Note: isOnHold will be updated when we receive the state change event
+            isOnHold = newHoldState
+            callState = newHoldState ? .held : .established
         } catch {
             errorMessage = "Failed to \(newHoldState ? "hold" : "resume"): \(error.localizedDescription)"
             print("AppViewModel: Failed to toggle hold: \(error)")
