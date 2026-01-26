@@ -22,6 +22,7 @@
 		F0000001BBBBBBBB00000002 /* tp_events.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000002 /* tp_events.c */; };
 		F0000001BBBBBBBB00000003 /* tp_account.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000005 /* tp_account.c */; };
 		F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */; };
+		F0000001BBBBBBBB00000006 /* tp_call.c in Sources */ = {isa = PBXBuildFile; fileRef = F0000002BBBBBBBB00000006 /* tp_call.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		F0000002BBBBBBBB00000003 /* tp_internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = tp_internal.h; path = ../../bridge/src/tp_internal.h; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TonePhoneCore.swift; path = ../../bridge/swift/TonePhoneCore.swift; sourceTree = "<group>"; };
 		F0000002BBBBBBBB00000005 /* tp_account.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_account.c; path = ../../bridge/src/tp_account.c; sourceTree = "<group>"; };
+		F0000002BBBBBBBB00000006 /* tp_call.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = tp_call.c; path = ../../bridge/src/tp_call.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -122,6 +124,7 @@
 				F0000002BBBBBBBB00000001 /* tp_core.c */,
 				F0000002BBBBBBBB00000002 /* tp_events.c */,
 				F0000002BBBBBBBB00000005 /* tp_account.c */,
+				F0000002BBBBBBBB00000006 /* tp_call.c */,
 				F0000002BBBBBBBB00000003 /* tp_internal.h */,
 				F0000002BBBBBBBB00000004 /* TonePhoneCore.swift */,
 			);
@@ -205,6 +208,7 @@
 				F0000001BBBBBBBB00000001 /* tp_core.c in Sources */,
 				F0000001BBBBBBBB00000002 /* tp_events.c in Sources */,
 				F0000001BBBBBBBB00000003 /* tp_account.c in Sources */,
+				F0000001BBBBBBBB00000006 /* tp_call.c in Sources */,
 				F0000001BBBBBBBB00000004 /* TonePhoneCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
