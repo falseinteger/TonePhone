@@ -8,65 +8,143 @@
 import SwiftUI
 
 /// Screen displayed when connected to a SIP account.
+///
+/// Shows the dialpad for making calls along with account status.
+/// Follows macOS Human Interface Guidelines for professional appearance.
 struct ActiveAccountView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer()
+            // Account header bar
+            accountHeader
 
-            // Connected status
-            VStack(spacing: 16) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
-                    .foregroundColor(.green)
-
-                Text("Connected")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+            // Dialpad
+            DialpadView { uri in
+                let formatted = formatURI(uri)
+                guard !formatted.isEmpty else { return }
+                viewModel.makeCall(to: formatted)
             }
 
-            Spacer()
+            // Status bar
+            statusBar
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // MARK: - Account Header
+
+    private var accountHeader: some View {
+        HStack(spacing: 8) {
+            // Status indicator
+            Circle()
+                .fill(viewModel.registrationStatus.indicatorColor)
+                .frame(width: 8, height: 8)
 
             // Account info
             if let account = viewModel.activeAccount {
-                VStack(spacing: 8) {
-                    Text(account.displayName.isEmpty ? account.username : account.displayName)
-                        .font(.headline)
+                Text(accountDisplayName(account))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
 
-                    HStack(spacing: 4) {
-                        Text(account.server)
-                        Text("·")
-                        Text(account.transport.displayName)
-                    }
-                    .font(.subheadline)
+                Text("on")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
-                .padding(.horizontal)
+
+                Text(account.server)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            // Status indicator
-            RegistrationStatusView(status: viewModel.registrationStatus)
-                .padding(.bottom, 8)
-
-            Divider()
-
-            // Unregister button
-            Button("Unregister") {
+            // Disconnect button
+            Button {
                 viewModel.unregisterAndGoBack()
+            } label: {
+                Text("Disconnect")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
             }
-            .controlSize(.large)
-            .padding()
+            .buttonStyle(.plain)
+            .help("Disconnect from account")
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accountAccessibilityLabel)
+    }
+
+    // MARK: - Status Bar
+
+    private var statusBar: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(viewModel.registrationStatus.indicatorColor)
+                .frame(width: 6, height: 6)
+
+            Text(viewModel.registrationStatus.displayText)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func accountDisplayName(_ account: SIPAccount) -> String {
+        account.displayName.isEmpty ? account.username : account.displayName
+    }
+
+    private var accountAccessibilityLabel: String {
+        guard let account = viewModel.activeAccount else {
+            return "No account"
+        }
+        let name = accountDisplayName(account)
+        return "\(name) on \(account.server), \(viewModel.registrationStatus.displayText)"
+    }
+
+    /// Formats a user input into a proper SIP URI if needed.
+    private func formatURI(_ input: String) -> String {
+        // Remove all whitespace and newlines
+        let cleaned = input.components(separatedBy: .whitespacesAndNewlines).joined()
+
+        guard !cleaned.isEmpty else { return "" }
+
+        // If already a SIP URI, use as-is
+        if cleaned.lowercased().hasPrefix("sip:") || cleaned.lowercased().hasPrefix("sips:") {
+            return cleaned
+        }
+
+        // If contains @, assume it's a SIP address without scheme
+        if cleaned.contains("@") {
+            return "sip:\(cleaned)"
+        }
+
+        // Otherwise, assume it's a number and use the account's server
+        if let account = viewModel.activeAccount {
+            return "sip:\(cleaned)@\(account.server)"
+        }
+
+        // Fallback: just prepend sip:
+        return "sip:\(cleaned)"
     }
 }
 
 #Preview {
     ActiveAccountView(viewModel: AppViewModel())
-        .frame(width: 350, height: 400)
+        .frame(width: 300, height: 480)
 }
