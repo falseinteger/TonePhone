@@ -80,29 +80,72 @@ git submodule update --init --recursive
 
 ## Modules and Features
 
-TonePhone builds baresip with a minimal, audio-focused module set.
+TonePhone builds baresip with a minimal, **audio-only** module set. Video support is intentionally excluded to reduce binary size and complexity.
 
 ### Enabled Modules
 
-| Category | Modules |
-|----------|---------|
-| Audio I/O | `audiounit` (macOS/iOS native) |
-| Audio Codecs | `g711`, `opus` (optional, see Opus Setup) |
-| NAT Traversal | `stun`, `turn`, `ice` |
-| Security | `srtp`, `dtls_srtp` |
-| Account | `account` |
+| Category | Modules | Purpose |
+|----------|---------|---------|
+| Audio I/O | `audiounit` | macOS/iOS native audio via AudioUnit |
+| Audio Codecs | `g711` | Basic codec (PCMU/PCMA), always supported |
+| Audio Codecs | `opus` | High-quality codec (optional, see below) |
+| NAT Traversal | `stun` | STUN client for NAT discovery |
+| NAT Traversal | `turn` | TURN relay for symmetric NAT |
+| NAT Traversal | `ice` | ICE connectivity checks |
+| Security | `srtp` | Secure RTP media encryption |
+| Security | `dtls_srtp` | DTLS key exchange for SRTP |
+| Account | `account` | SIP account management |
 
 **Note:** The `opus` module is only enabled if libopus is built. See [Opus Setup](#opus-setup-optional) below.
 
-### Disabled / Not Built
+### Excluded Modules (Not Built)
 
-- All video modules
-- Platform-specific drivers (ALSA, PulseAudio, etc.)
-- UI modules (stdio, menu, gtk)
-- Messaging, presence, MWI
-- Experimental codecs
+TonePhone explicitly excludes the following module categories:
 
-Module selection is controlled via CMake options in the build script.
+| Category | Examples | Reason |
+|----------|----------|--------|
+| Video codecs | `vp8`, `vp9`, `av1`, `avcodec` | Audio-only app |
+| Video I/O | `v4l2`, `avcapture`, `dshow`, `fakevideo` | Audio-only app |
+| Video display | `sdl`, `x11`, `directfb`, `selfview` | Audio-only app |
+| Video utilities | `vidbridge`, `vidinfo`, `snapshot`, `swscale` | Audio-only app |
+| Other audio drivers | `alsa`, `pulse`, `jack`, `portaudio`, `coreaudio` | Using `audiounit` |
+| Android audio | `aaudio`, `opensles` | Not targeting Android |
+| Windows audio | `wasapi` | Not targeting Windows |
+| UI/Console | `stdio`, `cons`, `menu`, `gtk`, `wincons` | App provides UI |
+| Messaging | `presence`, `mwi`, `contact` | Not in v1 scope |
+| Debug | `debug_cmd` | Not needed in release |
+
+### Binary Size
+
+By building only the required modules, the resulting libraries are significantly smaller:
+
+```text
+libbaresip.a  ~600 KB  (audio-only)
+libre.a       ~1.1 MB  (includes librem)
+```
+
+A full baresip build with video modules would be 3-5x larger.
+
+### Module Configuration
+
+Module selection is controlled in two places:
+
+1. **Build time** (`scripts/build-core.sh`): The `BARESIP_MODULES_BASE` variable specifies which modules to compile into the static library.
+
+2. **Runtime** (config file): The generated config file in `~/Library/Application Support/TonePhone/config` lists modules to load at startup. For statically linked modules, the `.so` extension is optional.
+
+Example runtime config:
+```text
+module g711.so
+module opus.so
+module audiounit.so
+module stun.so
+module turn.so
+module ice.so
+module srtp.so
+module dtls_srtp.so
+module account.so
+```
 
 ---
 
