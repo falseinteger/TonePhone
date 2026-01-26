@@ -130,22 +130,25 @@ Be patient. This is a personal project, not a company with dedicated staff.
 
 ## Development Setup
 
-1. Clone with submodules:
-   ```bash
-   git clone --recursive https://github.com/user/tonephone.git
-   ```
+See **[DEVELOPMENT.md](DEVELOPMENT.md)** for complete setup instructions including:
 
-2. Build core libraries:
-   ```bash
-   ./scripts/build-core.sh
-   ./scripts/package-xcframework.sh
-   ```
+- Prerequisites (macOS, Xcode, Homebrew packages)
+- Step-by-step build instructions
+- Verification steps
+- Common issues and solutions
 
-3. Open `apps/macOS/TonePhone.xcodeproj` in Xcode
+Quick start:
 
-4. Build and run
+```bash
+git clone --recursive https://github.com/falseinteger/TonePhone.git
+cd TonePhone
+./scripts/build-openssl.sh
+./scripts/build-core.sh
+./scripts/package-xcframework.sh
+open apps/macOS/TonePhone.xcodeproj
+```
 
-See [BUILDING.md](BUILDING.md) for detailed instructions.
+See [BUILDING.md](BUILDING.md) for detailed build system documentation.
 
 ---
 
