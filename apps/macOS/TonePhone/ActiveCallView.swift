@@ -96,14 +96,25 @@ struct ActiveCallView: View {
     }
 
     private var dtmfHistoryLabel: some View {
-        Text(dtmfHistory)
-            .font(.system(size: 16, weight: .medium, design: .monospaced))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(dtmfHistory)
+                    .font(.system(size: 16, weight: .medium, design: .monospaced))
+                    .lineLimit(1)
+                    .id("dtmf")
+            }
+            .onChange(of: dtmfHistory) { _, _ in
+                // Auto-scroll to show most recent digits
+                proxy.scrollTo("dtmf", anchor: .trailing)
+            }
+        }
+        .frame(maxWidth: 200)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
     }
 
     // MARK: - Control Bar
@@ -330,16 +341,25 @@ private struct DTMFPopover: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            // Display
-            Text(history.isEmpty ? "Enter digits" : history)
-                .font(.system(size: 15, design: .monospaced))
-                .foregroundColor(history.isEmpty ? .secondary : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
+            // Display - single line, scrollable, draggable
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(history.isEmpty ? "Enter digits" : history)
+                        .font(.system(size: 15, design: .monospaced))
+                        .foregroundColor(history.isEmpty ? .secondary : .primary)
+                        .lineLimit(1)
+                        .id("dtmfDisplay")
+                }
+                .onChange(of: history) { _, _ in
+                    proxy.scrollTo("dtmfDisplay", anchor: .trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
 
             // Keypad
             VStack(spacing: 6) {
