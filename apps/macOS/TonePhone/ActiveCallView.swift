@@ -2,54 +2,30 @@
 //  ActiveCallView.swift
 //  TonePhone
 //
-//  View displayed during an active call with call controls.
-//  Designed for macOS following Apple Human Interface Guidelines.
+//  Active call view with controls for macOS.
 //
 
 import SwiftUI
 
-/// View displayed during an active call.
-///
-/// macOS-appropriate design with:
-/// - Compact layout for desktop use
-/// - Adaptive buttons (icon-only when space is limited)
-/// - DTMF keypad as popover
-/// - Keyboard shortcuts
+/// Active call view following macOS Human Interface Guidelines.
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showDTMFKeypad = false
-    @State private var dtmfHistory: String = ""
+    @State private var dtmfHistory = ""
 
-    /// Minimum width to show text labels on buttons
-    private let compactWidthThreshold: CGFloat = 300
+    private let compactThreshold: CGFloat = 280
 
     var body: some View {
         GeometryReader { geometry in
-            let isCompact = geometry.size.width < compactWidthThreshold
+            let isCompact = geometry.size.width < compactThreshold
 
             VStack(spacing: 0) {
-                // Main content area
-                VStack(spacing: 16) {
-                    Spacer()
-                        .frame(height: 20)
-
-                    // Caller info
-                    callerInfoSection
-
-                    // Call status
-                    callStatusBadge
-
-                    // DTMF history (when digits have been entered)
-                    if !dtmfHistory.isEmpty {
-                        dtmfHistoryView
-                    }
-
-                    Spacer()
-                }
+                // Content
+                contentArea
 
                 Divider()
 
-                // Control bar at bottom
+                // Controls
                 controlBar(isCompact: isCompact)
             }
         }
@@ -57,72 +33,75 @@ struct ActiveCallView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    // MARK: - Caller Info
+    // MARK: - Content Area
 
-    private var callerInfoSection: some View {
+    private var contentArea: some View {
         VStack(spacing: 12) {
-            // Avatar
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 72, height: 72)
+            Spacer(minLength: 16)
 
-                Text(remotePartyInitials)
-                    .font(.system(size: 26, weight: .medium, design: .rounded))
-                    .foregroundColor(.white)
-            }
+            // Avatar
+            avatar
 
             // Name
-            Text(remotePartyDisplay)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.primary)
+            Text(displayName)
+                .font(.system(size: 17, weight: .semibold))
                 .lineLimit(1)
 
-            // Duration (when connected)
-            if isEstablishedOrHeld {
-                Text(viewModel.callDurationFormatted)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.secondary)
+            // Status or Duration
+            statusLabel
+
+            // DTMF History
+            if !dtmfHistory.isEmpty {
+                dtmfHistoryLabel
             }
+
+            Spacer(minLength: 16)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var avatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.accentColor, Color.accentColor.opacity(0.75)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 64, height: 64)
+
+            Text(initials)
+                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .foregroundColor(.white)
         }
     }
 
-    // MARK: - Call Status Badge
-
-    private var callStatusBadge: some View {
+    private var statusLabel: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(callStateColor)
-                .frame(width: 8, height: 8)
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
 
-            Text(callStateText)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.secondary)
+            if isConnected {
+                Text(viewModel.callDurationFormatted)
+                    .font(.system(size: 13, design: .monospaced))
+            } else {
+                Text(statusText)
+                    .font(.system(size: 13))
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .foregroundColor(.secondary)
     }
 
-    // MARK: - DTMF History
-
-    private var dtmfHistoryView: some View {
+    private var dtmfHistoryLabel: some View {
         Text(dtmfHistory)
-            .font(.system(size: 20, weight: .medium, design: .monospaced))
-            .foregroundColor(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .font(.system(size: 16, weight: .medium, design: .monospaced))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .controlBackgroundColor))
             )
     }
@@ -130,141 +109,115 @@ struct ActiveCallView: View {
     // MARK: - Control Bar
 
     private func controlBar(isCompact: Bool) -> some View {
-        HStack(spacing: 0) {
-            if isIncomingCall {
-                incomingCallControls(isCompact: isCompact)
+        HStack(spacing: 8) {
+            if isIncoming {
+                incomingControls(isCompact: isCompact)
             } else {
-                activeCallControls(isCompact: isCompact)
+                activeControls(isCompact: isCompact)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
-    // MARK: - Incoming Call Controls
-
-    private func incomingCallControls(isCompact: Bool) -> some View {
+    private func incomingControls(isCompact: Bool) -> some View {
         HStack(spacing: 12) {
             Spacer()
 
-            // Decline
-            Button(action: { viewModel.hangupCall() }) {
-                AdaptiveLabel(
-                    title: "Decline",
-                    systemImage: "phone.down.fill",
-                    isCompact: isCompact
-                )
+            Button {
+                viewModel.hangupCall()
+            } label: {
+                ControlLabel("Decline", icon: "phone.down.fill", isCompact: isCompact)
             }
-            .buttonStyle(CallButtonStyle(color: .red))
+            .buttonStyle(TintedButtonStyle(color: .red))
             .keyboardShortcut(.escape, modifiers: [])
 
-            // Answer
-            Button(action: { viewModel.answerCall() }) {
-                AdaptiveLabel(
-                    title: "Answer",
-                    systemImage: "phone.fill",
-                    isCompact: isCompact
-                )
+            Button {
+                viewModel.answerCall()
+            } label: {
+                ControlLabel("Answer", icon: "phone.fill", isCompact: isCompact)
             }
-            .buttonStyle(CallButtonStyle(color: .green))
+            .buttonStyle(TintedButtonStyle(color: .green))
             .keyboardShortcut(.return, modifiers: [])
 
             Spacer()
         }
     }
 
-    // MARK: - Active Call Controls
-
-    private func activeCallControls(isCompact: Bool) -> some View {
-        HStack(spacing: 8) {
+    private func activeControls(isCompact: Bool) -> some View {
+        HStack(spacing: 6) {
             // Mute
-            Button(action: { viewModel.toggleMute() }) {
-                AdaptiveLabel(
-                    title: viewModel.isMuted ? "Unmute" : "Mute",
-                    systemImage: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
-                    isCompact: isCompact
-                )
-            }
-            .buttonStyle(ControlButtonStyle(isActive: viewModel.isMuted))
+            ToolbarToggle(
+                isOn: viewModel.isMuted,
+                icon: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
+                action: { viewModel.toggleMute() }
+            )
             .keyboardShortcut("m", modifiers: .command)
-            .help("Mute microphone (⌘M)")
+            .help("Mute (⌘M)")
 
             // Hold
-            Button(action: { viewModel.toggleHold() }) {
-                AdaptiveLabel(
-                    title: viewModel.isOnHold ? "Resume" : "Hold",
-                    systemImage: viewModel.isOnHold ? "play.fill" : "pause.fill",
-                    isCompact: isCompact
-                )
-            }
-            .buttonStyle(ControlButtonStyle(isActive: viewModel.isOnHold))
+            ToolbarToggle(
+                isOn: viewModel.isOnHold,
+                icon: viewModel.isOnHold ? "play.fill" : "pause.fill",
+                action: { viewModel.toggleHold() }
+            )
             .keyboardShortcut("h", modifiers: .command)
-            .help("Hold call (⌘H)")
+            .help("Hold (⌘H)")
 
             // Keypad
-            Button(action: { showDTMFKeypad.toggle() }) {
-                AdaptiveLabel(
-                    title: "Keypad",
-                    systemImage: "circle.grid.3x3.fill",
-                    isCompact: isCompact
-                )
-            }
-            .buttonStyle(ControlButtonStyle(isActive: showDTMFKeypad))
+            ToolbarToggle(
+                isOn: showDTMFKeypad,
+                icon: "circle.grid.3x3.fill",
+                action: { showDTMFKeypad.toggle() }
+            )
             .keyboardShortcut("k", modifiers: .command)
-            .help("Show keypad (⌘K)")
+            .help("Keypad (⌘K)")
             .popover(isPresented: $showDTMFKeypad, arrowEdge: .top) {
-                DTMFKeypadPopover(
-                    dtmfHistory: $dtmfHistory,
-                    onDigitPressed: { digit in
-                        dtmfHistory.append(digit)
-                        viewModel.sendDTMF(digit)
-                    }
-                )
+                DTMFPopover(history: $dtmfHistory) { digit in
+                    dtmfHistory.append(digit)
+                    viewModel.sendDTMF(digit)
+                }
             }
 
             Spacer()
 
-            // End Call
-            Button(action: { viewModel.hangupCall() }) {
-                AdaptiveLabel(
-                    title: "End",
-                    systemImage: "phone.down.fill",
-                    isCompact: isCompact
-                )
+            // End
+            Button {
+                viewModel.hangupCall()
+            } label: {
+                ControlLabel("End", icon: "phone.down.fill", isCompact: isCompact)
             }
-            .buttonStyle(CallButtonStyle(color: .red))
+            .buttonStyle(TintedButtonStyle(color: .red))
             .keyboardShortcut(.escape, modifiers: [])
-            .help("End call (Esc)")
+            .help("End Call (Esc)")
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Computed Properties
 
-    private var isIncomingCall: Bool {
+    private var isIncoming: Bool {
         if case .incoming = viewModel.callState { return true }
         return false
     }
 
-    private var isEstablishedOrHeld: Bool {
+    private var isConnected: Bool {
         viewModel.callState == .established || viewModel.callState == .held
     }
 
-    private var remotePartyDisplay: String {
+    private var displayName: String {
         viewModel.remotePartyName ?? viewModel.remotePartyURI ?? "Unknown"
     }
 
-    private var remotePartyInitials: String {
-        let name = remotePartyDisplay
-        let components = name.split(separator: " ")
-        if components.count >= 2 {
-            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
+    private var initials: String {
+        let words = displayName.split(separator: " ")
+        if words.count >= 2 {
+            return String(words[0].prefix(1) + words[1].prefix(1)).uppercased()
         }
-        let filtered = name.filter { $0.isLetter || $0.isNumber }
-        return String(filtered.prefix(2)).uppercased()
+        return String(displayName.filter { $0.isLetter || $0.isNumber }.prefix(2)).uppercased()
     }
 
-    private var callStateColor: Color {
+    private var statusColor: Color {
         switch viewModel.callState {
         case .outgoing, .early: return .orange
         case .incoming, .established: return .green
@@ -273,165 +226,179 @@ struct ActiveCallView: View {
         }
     }
 
-    private var callStateText: String {
+    private var statusText: String {
         switch viewModel.callState {
         case .idle: return "Idle"
         case .outgoing: return "Calling..."
-        case .incoming: return "Incoming Call"
+        case .incoming: return "Incoming"
         case .early: return "Ringing..."
         case .established: return "Connected"
         case .held: return "On Hold"
-        case .ended: return "Call Ended"
+        case .ended: return "Ended"
         }
     }
 }
 
-// MARK: - Adaptive Label
+// MARK: - Control Label
 
-/// Label that shows icon + text or icon-only based on available space.
-private struct AdaptiveLabel: View {
+private struct ControlLabel: View {
     let title: String
-    let systemImage: String
+    let icon: String
     let isCompact: Bool
+
+    init(_ title: String, icon: String, isCompact: Bool) {
+        self.title = title
+        self.icon = icon
+        self.isCompact = isCompact
+    }
 
     var body: some View {
         if isCompact {
-            Image(systemName: systemImage)
+            Image(systemName: icon)
         } else {
-            Label(title, systemImage: systemImage)
+            Label(title, systemImage: icon)
         }
     }
 }
 
-// MARK: - Control Button Style
+// MARK: - Toolbar Toggle
 
-/// Standard macOS-style control button.
-private struct ControlButtonStyle: ButtonStyle {
-    let isActive: Bool
+private struct ToolbarToggle: View {
+    let isOn: Bool
+    let icon: String
+    let action: () -> Void
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(isActive ? .white : .primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
-            )
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 32, height: 24)
+                .foregroundColor(isOn ? .white : .primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isOn ? Color.accentColor : backgroundColor)
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    private var backgroundColor: Color {
+        Color(nsColor: isHovered ? .controlColor : .controlBackgroundColor)
     }
 }
 
-// MARK: - Call Button Style
+// MARK: - Tinted Button Style
 
-/// Colored action button for Answer/Decline/End.
-private struct CallButtonStyle: ButtonStyle {
+private struct TintedButtonStyle: ButtonStyle {
     let color: Color
+    @State private var isHovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(color)
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(color.opacity(configuration.isPressed ? 0.7 : (isHovered ? 0.85 : 1.0)))
             )
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .onHover { isHovered = $0 }
     }
 }
 
-// MARK: - DTMF Keypad Popover
+// MARK: - DTMF Popover
 
-/// DTMF keypad shown as a popover.
-private struct DTMFKeypadPopover: View {
-    @Binding var dtmfHistory: String
-    let onDigitPressed: (String) -> Void
+private struct DTMFPopover: View {
+    @Binding var history: String
+    let onDigit: (String) -> Void
 
-    private let keypadData: [[KeypadKey]] = [
-        [.init("1", letters: ""), .init("2", letters: "ABC"), .init("3", letters: "DEF")],
-        [.init("4", letters: "GHI"), .init("5", letters: "JKL"), .init("6", letters: "MNO")],
-        [.init("7", letters: "PQRS"), .init("8", letters: "TUV"), .init("9", letters: "WXYZ")],
-        [.init("*", letters: ""), .init("0", letters: ""), .init("#", letters: "")]
+    private let rows = [
+        ["1", "2", "3"],
+        ["4", "5", "6"],
+        ["7", "8", "9"],
+        ["*", "0", "#"]
+    ]
+
+    private let letters: [String: String] = [
+        "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL",
+        "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ"
     ]
 
     var body: some View {
-        VStack(spacing: 12) {
-            // History display
-            Text(dtmfHistory.isEmpty ? "Digits" : dtmfHistory)
-                .font(.system(size: 18, weight: .medium, design: .monospaced))
-                .foregroundColor(dtmfHistory.isEmpty ? .secondary : .primary)
+        VStack(spacing: 10) {
+            // Display
+            Text(history.isEmpty ? "Enter digits" : history)
+                .font(.system(size: 15, design: .monospaced))
+                .foregroundColor(history.isEmpty ? .secondary : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(6)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
 
-            // Keypad grid
-            VStack(spacing: 8) {
-                ForEach(keypadData, id: \.self) { row in
-                    HStack(spacing: 8) {
-                        ForEach(row) { key in
-                            DTMFKey(key: key, action: {
-                                onDigitPressed(key.digit)
-                            })
+            // Keypad
+            VStack(spacing: 6) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(spacing: 6) {
+                        ForEach(row, id: \.self) { digit in
+                            DTMFKey(digit: digit, letters: letters[digit]) {
+                                onDigit(digit)
+                            }
                         }
                     }
                 }
             }
         }
-        .padding(16)
-        .frame(width: 220)
+        .padding(12)
+        .frame(width: 196)
     }
 }
 
-/// Model for a keypad key.
-private struct KeypadKey: Identifiable, Hashable {
-    let id = UUID()
-    let digit: String
-    let letters: String
+// MARK: - DTMF Key
 
-    init(_ digit: String, letters: String) {
-        self.digit = digit
-        self.letters = letters
-    }
-}
-
-/// Individual DTMF key button.
 private struct DTMFKey: View {
-    let key: KeypadKey
+    let digit: String
+    let letters: String?
     let action: () -> Void
+
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 1) {
-                Text(key.digit)
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                Text(digit)
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
 
-                if !key.letters.isEmpty {
-                    Text(key.letters)
+                if let letters = letters {
+                    Text(letters)
                         .font(.system(size: 8, weight: .medium))
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 56, height: 44)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
+            .frame(width: 52, height: 40)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(nsColor: isHovered ? .controlColor : .controlBackgroundColor))
+            )
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
 // MARK: - Preview
 
-#Preview("Active Call") {
+#Preview("Call") {
     ActiveCallView(viewModel: AppViewModel())
-        .frame(width: 320, height: 400)
+        .frame(width: 300, height: 340)
 }
 
 #Preview("Compact") {
     ActiveCallView(viewModel: AppViewModel())
-        .frame(width: 250, height: 400)
+        .frame(width: 220, height: 340)
 }
