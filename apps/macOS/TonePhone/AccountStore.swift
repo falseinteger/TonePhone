@@ -33,9 +33,7 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var displayName: String
     /// Transport protocol (UDP, TCP, TLS).
     var transport: SIPTransport
-    /// Whether this is the default account for outgoing calls.
-    var isDefault: Bool
-    /// Whether to automatically connect on app launch.
+    /// Whether to automatically connect on app launch (also makes this the default account).
     var autoLogin: Bool
 
     /// Creates a new account with default values.
@@ -45,7 +43,6 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         username: String = "",
         displayName: String = "",
         transport: SIPTransport = .udp,
-        isDefault: Bool = false,
         autoLogin: Bool = false
     ) {
         self.id = id
@@ -53,7 +50,6 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         self.username = username
         self.displayName = displayName
         self.transport = transport
-        self.isDefault = isDefault
         self.autoLogin = autoLogin
     }
 
@@ -145,14 +141,7 @@ final class AccountStore {
             accounts.append(account)
         }
 
-        // If this account is default, clear default from others
-        if account.isDefault {
-            for i in accounts.indices where accounts[i].id != account.id {
-                accounts[i].isDefault = false
-            }
-        }
-
-        // If this account has autoLogin, clear autoLogin from others
+        // If this account has autoLogin, clear autoLogin from others (only one primary account)
         if account.autoLogin {
             for i in accounts.indices where accounts[i].id != account.id {
                 accounts[i].autoLogin = false

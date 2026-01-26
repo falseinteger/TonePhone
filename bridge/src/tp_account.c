@@ -31,7 +31,9 @@
 typedef struct {
     tp_account_id_t id;
     struct ua *ua;
+    struct ua *removing_ua;  /* UA pointer kept for event lookup during removal */
     bool in_use;
+    bool removing;  /* Account is being removed, still valid for event lookups */
 } account_entry_t;
 
 static struct {
@@ -76,15 +78,30 @@ static void post_account_failure_event(tp_account_id_t id, const char *reason)
 
 /**
  * @brief Find an account entry by ID
+ * @param include_removing If true, also return accounts being removed
  */
-static account_entry_t *find_account(tp_account_id_t id)
+static account_entry_t *find_account_ex(tp_account_id_t id, bool include_removing)
 {
     for (int i = 0; i < MAX_ACCOUNTS; i++) {
-        if (g_accounts.accounts[i].in_use && g_accounts.accounts[i].id == id) {
-            return &g_accounts.accounts[i];
+        account_entry_t *e = &g_accounts.accounts[i];
+        if (e->id == id) {
+            if (e->in_use && !e->removing) {
+                return e;
+            }
+            if (include_removing && (e->in_use || e->removing)) {
+                return e;
+            }
         }
     }
     return NULL;
+}
+
+/**
+ * @brief Find an account entry by ID (excludes accounts being removed)
+ */
+static account_entry_t *find_account(tp_account_id_t id)
+{
+    return find_account_ex(id, false);
 }
 
 /**
@@ -93,7 +110,8 @@ static account_entry_t *find_account(tp_account_id_t id)
 static account_entry_t *find_free_slot(void)
 {
     for (int i = 0; i < MAX_ACCOUNTS; i++) {
-        if (!g_accounts.accounts[i].in_use) {
+        /* Skip slots that are in use or being removed */
+        if (!g_accounts.accounts[i].in_use && !g_accounts.accounts[i].removing) {
             return &g_accounts.accounts[i];
         }
     }
@@ -272,20 +290,25 @@ tp_error_t tp_account_remove(tp_account_id_t id)
         return TP_ERR_NOT_FOUND;
     }
 
-    /* Save UA pointer and clear from entry */
-    if (entry->ua) {
-        ua_to_remove = entry->ua;
-        entry->ua = NULL;
+    /* Already being removed? */
+    if (entry->removing) {
+        pthread_mutex_unlock(&g_mutex);
+        return TP_OK;
     }
 
+    /* Move UA to removing_ua for event lookups, clear main ua */
+    ua_to_remove = entry->ua;
+    entry->removing_ua = entry->ua;  /* Keep for event lookup (no extra ref needed) */
+    entry->ua = NULL;
     entry->in_use = false;
+    entry->removing = true;
 
     /* Update default if needed */
     if (g_accounts.default_id == id) {
         g_accounts.default_id = TP_INVALID_ID;
         /* Find another account to be default */
         for (int i = 0; i < MAX_ACCOUNTS; i++) {
-            if (g_accounts.accounts[i].in_use) {
+            if (g_accounts.accounts[i].in_use && !g_accounts.accounts[i].removing) {
                 g_accounts.default_id = g_accounts.accounts[i].id;
                 break;
             }
@@ -294,11 +317,16 @@ tp_error_t tp_account_remove(tp_account_id_t id)
 
     pthread_mutex_unlock(&g_mutex);
 
-    /* Unregister and free UA outside of mutex to avoid deadlock */
+    /* Unregister UA outside of mutex - this may fire events.
+     * Events can still find account via removing_ua pointer match. */
     if (ua_to_remove) {
         ua_unregister(ua_to_remove);
         mem_deref(ua_to_remove);
     }
+
+    /* Clear removing state (entry is already cleared above) */
+    entry->removing_ua = NULL;
+    entry->removing = false;
 
     info("tp_account: removed account %u\n", id);
 
@@ -430,8 +458,17 @@ tp_account_id_t tp_account_find_id_by_ua(const struct ua *ua)
     pthread_mutex_lock(&g_mutex);
 
     for (int i = 0; i < MAX_ACCOUNTS; i++) {
-        if (g_accounts.accounts[i].in_use && g_accounts.accounts[i].ua == ua) {
-            result = g_accounts.accounts[i].id;
+        account_entry_t *e = &g_accounts.accounts[i];
+
+        /* Check active accounts */
+        if (e->in_use && e->ua == ua) {
+            result = e->id;
+            break;
+        }
+
+        /* Check accounts being removed (match against removing_ua) */
+        if (e->removing && e->removing_ua == ua) {
+            result = e->id;
             break;
         }
     }

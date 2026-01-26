@@ -156,16 +156,11 @@ struct AccountRowView: View {
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
 
-                    if account.isDefault {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(.orange)
-                    }
-
                     if account.autoLogin {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 9))
-                            .foregroundColor(.green)
+                            .foregroundColor(.accentColor)
+                            .help("Auto-connect on launch")
                     }
                 }
 
