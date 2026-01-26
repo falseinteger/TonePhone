@@ -117,23 +117,26 @@ struct ActiveAccountView: View {
 
     /// Formats a user input into a proper SIP URI if needed.
     private func formatURI(_ input: String) -> String {
+        // Remove any whitespace
+        let cleaned = input.trimmingCharacters(in: .whitespaces)
+
         // If already a SIP URI, use as-is
-        if input.lowercased().hasPrefix("sip:") || input.lowercased().hasPrefix("sips:") {
-            return input
+        if cleaned.lowercased().hasPrefix("sip:") || cleaned.lowercased().hasPrefix("sips:") {
+            return cleaned
         }
 
         // If contains @, assume it's a SIP address without scheme
-        if input.contains("@") {
-            return "sip:\(input)"
+        if cleaned.contains("@") {
+            return "sip:\(cleaned)"
         }
 
         // Otherwise, assume it's a number and use the account's server
         if let account = viewModel.activeAccount {
-            return "sip:\(input)@\(account.server)"
+            return "sip:\(cleaned)@\(account.server)"
         }
 
         // Fallback: just prepend sip:
-        return "sip:\(input)"
+        return "sip:\(cleaned)"
     }
 }
 

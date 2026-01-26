@@ -153,6 +153,9 @@ final class AppViewModel: ObservableObject {
     /// Call start time for duration calculation.
     private var callStartTime: Date?
 
+    /// Pending cleanup work item to prevent stale timers affecting new calls.
+    private var pendingCleanupWorkItem: DispatchWorkItem?
+
     /// Tracked account states by ID.
     private var accountStates: [AccountID: AccountState] = [:]
 
@@ -281,15 +284,7 @@ final class AppViewModel: ObservableObject {
         case .ended(let reason):
             callState = .ended(reason: reason)
             stopCallDurationTimer()
-            // Return to active account screen after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.clearCallState()
-                if self?.activeAccount != nil {
-                    self?.currentScreen = .activeAccount
-                } else {
-                    self?.currentScreen = .accountList
-                }
-            }
+            scheduleCallCleanup(delay: 1.5)
         }
     }
 
@@ -303,6 +298,38 @@ final class AppViewModel: ObservableObject {
         callDuration = 0
         callStartTime = nil
         stopCallDurationTimer()
+        cancelPendingCleanup()
+    }
+
+    /// Schedules cleanup after call ends, canceling any existing pending cleanup.
+    private func scheduleCallCleanup(delay: TimeInterval = 1.0) {
+        // Cancel any existing pending cleanup
+        cancelPendingCleanup()
+
+        // Capture current call ID to verify it hasn't changed
+        let callIDAtSchedule = activeCallID
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            // Only cleanup if the call ID hasn't changed (no new call started)
+            guard self.activeCallID == callIDAtSchedule else { return }
+
+            self.clearCallState()
+            if self.activeAccount != nil {
+                self.currentScreen = .activeAccount
+            } else {
+                self.currentScreen = .accountList
+            }
+        }
+
+        pendingCleanupWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    /// Cancels any pending cleanup work item.
+    private func cancelPendingCleanup() {
+        pendingCleanupWorkItem?.cancel()
+        pendingCleanupWorkItem = nil
     }
 
     /// Parses a display name from a SIP URI.
@@ -626,6 +653,9 @@ final class AppViewModel: ObservableObject {
     /// Makes an outgoing call to the specified URI.
     /// - Parameter uri: The SIP URI to call.
     func makeCall(to uri: String) {
+        // Cancel any pending cleanup from a previous call
+        cancelPendingCleanup()
+
         do {
             let callID = try TonePhoneCore.shared.makeCall(to: uri)
             activeCallID = callID
@@ -664,17 +694,10 @@ final class AppViewModel: ObservableObject {
 
         do {
             try TonePhoneCore.shared.hangupCall(callID)
-            // Immediately show ended state and return to previous screen
+            // Immediately show ended state and schedule cleanup
             callState = .ended(reason: nil)
             stopCallDurationTimer()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.clearCallState()
-                if self?.activeAccount != nil {
-                    self?.currentScreen = .activeAccount
-                } else {
-                    self?.currentScreen = .accountList
-                }
-            }
+            scheduleCallCleanup(delay: 1.0)
         } catch {
             errorMessage = "Failed to hang up call: \(error.localizedDescription)"
             print("AppViewModel: Failed to hang up call: \(error)")

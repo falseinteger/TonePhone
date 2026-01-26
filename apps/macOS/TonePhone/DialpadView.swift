@@ -20,6 +20,11 @@ struct DialpadView: View {
     /// Whether the input field is focused.
     @FocusState private var isInputFocused: Bool
 
+    /// Trimmed input for validation.
+    private var trimmedInput: String {
+        input.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 8)
@@ -99,7 +104,7 @@ struct DialpadView: View {
             }
             HStack(spacing: 12) {
                 DialpadKey(main: "*", sub: nil, action: { append("*") })
-                DialpadKey(main: "0", sub: "+", action: { append("0") }, longAction: { append("+") })
+                DialpadKey(main: "0", sub: "+", action: { append("0") }, longPressChar: "+", longAction: { append("+") })
                 DialpadKey(main: "#", sub: nil, action: { append("#") })
             }
         }
@@ -114,7 +119,7 @@ struct DialpadView: View {
                 input = ""
             }
             .buttonStyle(.bordered)
-            .disabled(input.isEmpty)
+            .disabled(trimmedInput.isEmpty)
             .keyboardShortcut(.escape, modifiers: [])
 
             // Call button
@@ -126,8 +131,9 @@ struct DialpadView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(input.isEmpty)
+            .disabled(trimmedInput.isEmpty)
             .keyboardShortcut(.return, modifiers: [])
+            .accessibilityHint(trimmedInput.isEmpty ? "Enter a number first" : "Call \(trimmedInput)")
         }
         .controlSize(.large)
     }
@@ -139,9 +145,8 @@ struct DialpadView: View {
     }
 
     private func initiateCall() {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        onCall(trimmed)
+        guard !trimmedInput.isEmpty else { return }
+        onCall(trimmedInput)
     }
 }
 
@@ -151,13 +156,19 @@ private struct DialpadKey: View {
     let main: String
     let sub: String?
     let action: () -> Void
+    var longPressChar: String?
     var longAction: (() -> Void)?
 
     @State private var isHovered = false
-    @State private var isPressed = false
+    @State private var isLongPressed = false
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            // Don't fire tap if long press just occurred
+            if !isLongPressed {
+                action()
+            }
+        } label: {
             VStack(spacing: 1) {
                 Text(main)
                     .font(.system(size: 20, weight: .medium))
@@ -175,26 +186,33 @@ private struct DialpadKey: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 44)
-            .background(backgroundColor)
+            .background(isHovered ? Color(nsColor: .controlColor) : Color(nsColor: .controlBackgroundColor))
             .cornerRadius(6)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DialpadKeyButtonStyle())
         .onHover { isHovered = $0 }
-        .simultaneousGesture(
+        .highPriorityGesture(
             LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in longAction?() }
+                .onEnded { _ in
+                    isLongPressed = true
+                    longAction?()
+                    // Reset after a short delay so next tap works
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isLongPressed = false
+                    }
+                }
         )
         .accessibilityLabel(main)
+        .accessibilityHint(longPressChar.map { "Hold to enter \($0)" } ?? "")
     }
+}
 
-    private var backgroundColor: Color {
-        if isPressed {
-            return Color(nsColor: .controlAccentColor).opacity(0.2)
-        } else if isHovered {
-            return Color(nsColor: .controlColor)
-        } else {
-            return Color(nsColor: .controlBackgroundColor)
-        }
+// MARK: - Dialpad Key Button Style
+
+private struct DialpadKeyButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
     }
 }
 
