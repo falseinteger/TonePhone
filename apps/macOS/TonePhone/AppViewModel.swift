@@ -631,6 +631,9 @@ final class AppViewModel: ObservableObject {
             activeCallID = callID
             remotePartyURI = uri
             remotePartyName = parseDisplayName(from: uri)
+            // Immediately show outgoing call UI
+            callState = .outgoing
+            currentScreen = .activeCall
         } catch {
             errorMessage = "Failed to start call: \(error.localizedDescription)"
             print("AppViewModel: Failed to make call: \(error)")
