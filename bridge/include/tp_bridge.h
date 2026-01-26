@@ -269,6 +269,35 @@ tp_error_t tp_account_unregister(tp_account_id_t id);
  */
 tp_error_t tp_account_set_default(tp_account_id_t id);
 
+/**
+ * @brief Get current registration state of an account
+ * @param id Account ID
+ * @param out_state Output: current account state
+ * @return TP_OK on success, error code otherwise
+ */
+tp_error_t tp_account_get_state(tp_account_id_t id, tp_account_state_t *out_state);
+
+/**
+ * @brief Get the default account ID
+ * @param out_id Output: default account ID (TP_INVALID_ID if none)
+ * @return TP_OK on success, error code otherwise
+ */
+tp_error_t tp_account_get_default(tp_account_id_t *out_id);
+
+/**
+ * @brief Get the number of configured accounts
+ * @return Number of active accounts
+ */
+uint32_t tp_account_count(void);
+
+/**
+ * @brief Get account ID by index
+ * @param index Zero-based index (0 to tp_account_count()-1)
+ * @param out_id Output: account ID at this index
+ * @return TP_OK on success, TP_ERR_NOT_FOUND if index out of range
+ */
+tp_error_t tp_account_get_id_at_index(uint32_t index, tp_account_id_t *out_id);
+
 /* =============================================================================
  * Call Functions
  * ============================================================================= */
