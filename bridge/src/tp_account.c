@@ -467,13 +467,19 @@ tp_error_t tp_account_get_state(tp_account_id_t id, tp_account_state_t *out_stat
         return TP_OK;
     }
 
-    /* Query baresip for registration state */
+    /* Query baresip for registration state.
+     *
+     * Note: baresip doesn't expose ua_isregistering(), so we cannot detect
+     * the transitional "registering" state synchronously. The REGISTERING
+     * state is tracked via events (TP_EVENT_ACCOUNT_STATE_CHANGED).
+     * This function returns UNREGISTERED for accounts that are in the
+     * process of registering. Use events for real-time state tracking.
+     */
     if (ua_isregistered(ua)) {
         *out_state = TP_ACCOUNT_STATE_REGISTERED;
     } else if (ua_regfailed(ua)) {
         *out_state = TP_ACCOUNT_STATE_FAILED;
     } else {
-        /* Not registered and not failed - either unregistered or registering */
         *out_state = TP_ACCOUNT_STATE_UNREGISTERED;
     }
 
