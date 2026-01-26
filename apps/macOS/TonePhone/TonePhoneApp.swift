@@ -66,6 +66,9 @@ struct WindowConfigurator: NSViewRepresentable {
         // Set delegate for resize control
         window.delegate = delegate
 
+        // Disable tabs - this is a single-window app
+        window.tabbingMode = .disallowed
+
         // Set size constraints
         window.minSize = WindowDelegate.minSize
         window.maxSize = WindowDelegate.maxSize
