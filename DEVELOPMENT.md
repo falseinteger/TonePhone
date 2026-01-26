@@ -160,13 +160,61 @@ file output/macos-fat/lib/libbaresip.a
 # Should show: Mach-O universal binary with 2 architectures
 ```
 
+### Verify Architecture Support
+
+The app runs natively on both Apple Silicon (arm64) and Intel (x86_64) Macs:
+
+```bash
+# Check the built app supports both architectures
+file "apps/macOS/build/Release/TonePhone.app/Contents/MacOS/TonePhone"
+# Should show: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit executable x86_64] [arm64]
+```
+
+To test on Intel via Rosetta (from Apple Silicon):
+1. Right-click TonePhone.app in Finder
+2. Select "Get Info"
+3. Check "Open using Rosetta"
+4. Launch the app and verify initialization logs appear
+
 ### Check Xcode Build
 
 In Xcode:
 
 1. Build succeeds without errors (⌘B)
 2. App launches without crashes (⌘R)
-3. Console shows baresip initialization logs
+3. Console shows baresip initialization logs (see below)
+
+### Verify Baresip Initialization
+
+When the app launches, check Xcode's console output (⌘⇧C) for initialization logs:
+
+```text
+tp_core: ===== Initialization Summary =====
+tp_core: libre version: X.X.X
+tp_core: baresip version: X.X.X
+tp_core: audio codecs: 3 loaded
+tp_core: config path: /Users/.../Library/Application Support/TonePhone
+tp_core: =====================================
+tp_core: initialized successfully
+tp_core: main loop started on background thread
+```
+
+Key verification points:
+- libre and baresip versions are displayed
+- Audio codecs shows 3 or more (g711, opus, etc.)
+- "initialized successfully" message appears
+- "main loop started" confirms the event loop is running
+
+When the app shuts down, you should see:
+
+```text
+tp_core: ===== Shutdown Sequence =====
+tp_core: closing event handler...
+tp_core: closing user agents...
+...
+tp_core: =============================
+tp_core: shutdown complete
+```
 
 ### Test Basic Functionality
 

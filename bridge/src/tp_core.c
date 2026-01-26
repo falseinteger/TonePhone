@@ -270,7 +270,20 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     g_bridge.thread_started = false;
     pthread_mutex_unlock(&g_mutex);
 
-    info("tp_core: initialized\n");
+    /* Log initialization summary for verification */
+    info("tp_core: ===== Initialization Summary =====\n");
+    info("tp_core: libre version: %s\n", sys_libre_version_get());
+    info("tp_core: baresip version: %s\n", baresip_version());
+
+    /* Log audio codec info */
+    const struct list *codecs = baresip_aucodecl();
+    if (codecs) {
+        info("tp_core: audio codecs: %u loaded\n", list_count(codecs));
+    }
+
+    info("tp_core: config path: %s\n", config_path ? config_path : "(default)");
+    info("tp_core: =====================================\n");
+    info("tp_core: initialized successfully\n");
 
     return TP_OK;
 }
@@ -319,7 +332,7 @@ tp_error_t tp_start(void)
 
     post_core_state_event(TP_CORE_STATE_RUNNING);
 
-    info("tp_core: started\n");
+    info("tp_core: main loop started on background thread\n");
 
     return TP_OK;
 }
@@ -366,7 +379,7 @@ tp_error_t tp_stop(void)
 
     post_core_state_event(TP_CORE_STATE_IDLE);
 
-    info("tp_core: stopped\n");
+    info("tp_core: main loop stopped\n");
 
     return TP_OK;
 }
@@ -392,18 +405,32 @@ void tp_shutdown(void)
         tp_stop();
     }
 
-    info("tp_core: shutting down...\n");
+    info("tp_core: ===== Shutdown Sequence =====\n");
 
     /* Unregister event handler first (reverse order of init) */
+    info("tp_core: closing event handler...\n");
     tp_events_close();
 
     /* Shutdown in reverse order of initialization */
+    info("tp_core: closing user agents...\n");
     ua_close();
+
+    info("tp_core: unloading app modules...\n");
     module_app_unload();
+
+    info("tp_core: closing configuration...\n");
     conf_close();
+
+    info("tp_core: closing baresip core...\n");
     baresip_close();
+
+    info("tp_core: closing modules...\n");
     mod_close();
+
+    info("tp_core: closing async workers...\n");
     re_thread_async_close();
+
+    info("tp_core: closing libre...\n");
     libre_close();
 
     pthread_mutex_lock(&g_mutex);
@@ -413,6 +440,7 @@ void tp_shutdown(void)
     g_bridge.event_ctx = NULL;
     pthread_mutex_unlock(&g_mutex);
 
+    info("tp_core: =============================\n");
     info("tp_core: shutdown complete\n");
 }
 
