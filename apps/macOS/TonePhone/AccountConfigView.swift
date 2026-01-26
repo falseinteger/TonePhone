@@ -109,6 +109,7 @@ struct AccountConfigView: View {
             footerView
         }
         .frame(width: 420, height: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             loadExistingAccount()
         }
