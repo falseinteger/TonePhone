@@ -110,7 +110,8 @@ static account_entry_t *find_account(tp_account_id_t id)
 static account_entry_t *find_free_slot(void)
 {
     for (int i = 0; i < MAX_ACCOUNTS; i++) {
-        if (!g_accounts.accounts[i].in_use) {
+        /* Skip slots that are in use or being removed */
+        if (!g_accounts.accounts[i].in_use && !g_accounts.accounts[i].removing) {
             return &g_accounts.accounts[i];
         }
     }

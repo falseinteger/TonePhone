@@ -103,7 +103,7 @@ struct ActiveCallView: View {
                     .lineLimit(1)
                     .id("dtmf")
             }
-            .onChange(of: dtmfHistory) { _ in
+            .onChange(of: dtmfHistory) { _, _ in
                 // Auto-scroll to show most recent digits
                 proxy.scrollTo("dtmf", anchor: .trailing)
             }
@@ -350,7 +350,7 @@ private struct DTMFPopover: View {
                         .lineLimit(1)
                         .id("dtmfDisplay")
                 }
-                .onChange(of: history) { _ in
+                .onChange(of: history) { _, _ in
                     proxy.scrollTo("dtmfDisplay", anchor: .trailing)
                 }
             }
