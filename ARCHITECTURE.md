@@ -41,6 +41,8 @@ The foundation. Handles all SIP and media complexity:
 
 This layer is pure C. No UI code, no platform-specific code.
 
+**Audio-Only Design:** TonePhone intentionally excludes video support. The baresip build includes only audio modules to minimize binary size and complexity. See [BUILDING.md](BUILDING.md#modules-and-features) for the full module list.
+
 ### Platform Adapters
 
 Thin adapters that connect baresip to Apple platform APIs:
