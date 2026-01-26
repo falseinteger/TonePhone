@@ -630,6 +630,71 @@ public final class TonePhoneCore {
         }
     }
 
+    /// Get the current registration state of an account.
+    ///
+    /// - Parameter accountID: The account ID to query
+    /// - Returns: The current account state
+    /// - Throws: `TonePhoneError` if query fails
+    public func getAccountState(_ accountID: AccountID) throws -> AccountState {
+        var state: tp_account_state_t = TP_ACCOUNT_STATE_UNREGISTERED
+
+        let result = tp_account_get_state(accountID.rawValue, &state)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+
+        switch state {
+        case TP_ACCOUNT_STATE_UNREGISTERED:
+            return .unregistered
+        case TP_ACCOUNT_STATE_REGISTERING:
+            return .registering
+        case TP_ACCOUNT_STATE_REGISTERED:
+            return .registered
+        case TP_ACCOUNT_STATE_FAILED:
+            return .failed(reason: nil)
+        default:
+            return .unregistered
+        }
+    }
+
+    /// Get the default account ID.
+    ///
+    /// - Returns: The default account ID, or nil if no default is set
+    public func getDefaultAccount() -> AccountID? {
+        var accountID: tp_account_id_t = TP_INVALID_ID
+
+        let result = tp_account_get_default(&accountID)
+        guard result == TP_OK, accountID != TP_INVALID_ID else {
+            return nil
+        }
+
+        return AccountID(rawValue: accountID)
+    }
+
+    /// Get the number of configured accounts.
+    ///
+    /// - Returns: The number of active accounts
+    public func accountCount() -> Int {
+        return Int(tp_account_count())
+    }
+
+    /// Get all configured account IDs.
+    ///
+    /// - Returns: Array of account IDs
+    public func getAllAccountIDs() -> [AccountID] {
+        let count = tp_account_count()
+        var ids: [AccountID] = []
+
+        for i in 0..<count {
+            var accountID: tp_account_id_t = TP_INVALID_ID
+            if tp_account_get_id_at_index(i, &accountID) == TP_OK {
+                ids.append(AccountID(rawValue: accountID))
+            }
+        }
+
+        return ids
+    }
+
     // MARK: - Call Control
 
     /// Start an outgoing call.
