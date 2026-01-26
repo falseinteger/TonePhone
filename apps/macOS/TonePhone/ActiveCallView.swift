@@ -341,16 +341,25 @@ private struct DTMFPopover: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            // Display
-            Text(history.isEmpty ? "Enter digits" : history)
-                .font(.system(size: 15, design: .monospaced))
-                .foregroundColor(history.isEmpty ? .secondary : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
+            // Display - single line, scrollable, draggable
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(history.isEmpty ? "Enter digits" : history)
+                        .font(.system(size: 15, design: .monospaced))
+                        .foregroundColor(history.isEmpty ? .secondary : .primary)
+                        .lineLimit(1)
+                        .id("dtmfDisplay")
+                }
+                .onChange(of: history) { _ in
+                    proxy.scrollTo("dtmfDisplay", anchor: .trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
 
             // Keypad
             VStack(spacing: 6) {
