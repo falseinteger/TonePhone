@@ -12,34 +12,41 @@ import SwiftUI
 ///
 /// macOS-appropriate design with:
 /// - Compact layout for desktop use
-/// - Standard macOS controls and styling
+/// - Adaptive buttons (icon-only when space is limited)
 /// - DTMF keypad as popover
-/// - Efficient use of window space
+/// - Keyboard shortcuts
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showDTMFKeypad = false
     @State private var dtmfHistory: String = ""
 
+    /// Minimum width to show text labels on buttons
+    private let compactWidthThreshold: CGFloat = 300
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Main content area
-            VStack(spacing: 16) {
-                Spacer()
-                    .frame(height: 20)
+        GeometryReader { geometry in
+            let isCompact = geometry.size.width < compactWidthThreshold
 
-                // Caller info
-                callerInfoSection
+            VStack(spacing: 0) {
+                // Main content area
+                VStack(spacing: 16) {
+                    Spacer()
+                        .frame(height: 20)
 
-                // Call status
-                callStatusBadge
+                    // Caller info
+                    callerInfoSection
 
-                Spacer()
+                    // Call status
+                    callStatusBadge
+
+                    Spacer()
+                }
+
+                Divider()
+
+                // Control bar at bottom
+                controlBar(isCompact: isCompact)
             }
-
-            Divider()
-
-            // Control bar at bottom
-            controlBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -103,12 +110,12 @@ struct ActiveCallView: View {
 
     // MARK: - Control Bar
 
-    private var controlBar: some View {
+    private func controlBar(isCompact: Bool) -> some View {
         HStack(spacing: 0) {
             if isIncomingCall {
-                incomingCallControls
+                incomingCallControls(isCompact: isCompact)
             } else {
-                activeCallControls
+                activeCallControls(isCompact: isCompact)
             }
         }
         .padding(.horizontal, 16)
@@ -118,20 +125,28 @@ struct ActiveCallView: View {
 
     // MARK: - Incoming Call Controls
 
-    private var incomingCallControls: some View {
+    private func incomingCallControls(isCompact: Bool) -> some View {
         HStack(spacing: 12) {
             Spacer()
 
             // Decline
             Button(action: { viewModel.hangupCall() }) {
-                Label("Decline", systemImage: "phone.down.fill")
+                AdaptiveLabel(
+                    title: "Decline",
+                    systemImage: "phone.down.fill",
+                    isCompact: isCompact
+                )
             }
             .buttonStyle(CallButtonStyle(color: .red))
             .keyboardShortcut(.escape, modifiers: [])
 
             // Answer
             Button(action: { viewModel.answerCall() }) {
-                Label("Answer", systemImage: "phone.fill")
+                AdaptiveLabel(
+                    title: "Answer",
+                    systemImage: "phone.fill",
+                    isCompact: isCompact
+                )
             }
             .buttonStyle(CallButtonStyle(color: .green))
             .keyboardShortcut(.return, modifiers: [])
@@ -142,13 +157,14 @@ struct ActiveCallView: View {
 
     // MARK: - Active Call Controls
 
-    private var activeCallControls: some View {
+    private func activeCallControls(isCompact: Bool) -> some View {
         HStack(spacing: 8) {
             // Mute
             Button(action: { viewModel.toggleMute() }) {
-                Label(
-                    viewModel.isMuted ? "Unmute" : "Mute",
-                    systemImage: viewModel.isMuted ? "mic.slash.fill" : "mic.fill"
+                AdaptiveLabel(
+                    title: viewModel.isMuted ? "Unmute" : "Mute",
+                    systemImage: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
+                    isCompact: isCompact
                 )
             }
             .buttonStyle(ControlButtonStyle(isActive: viewModel.isMuted))
@@ -157,9 +173,10 @@ struct ActiveCallView: View {
 
             // Hold
             Button(action: { viewModel.toggleHold() }) {
-                Label(
-                    viewModel.isOnHold ? "Resume" : "Hold",
-                    systemImage: viewModel.isOnHold ? "play.fill" : "pause.fill"
+                AdaptiveLabel(
+                    title: viewModel.isOnHold ? "Resume" : "Hold",
+                    systemImage: viewModel.isOnHold ? "play.fill" : "pause.fill",
+                    isCompact: isCompact
                 )
             }
             .buttonStyle(ControlButtonStyle(isActive: viewModel.isOnHold))
@@ -168,7 +185,11 @@ struct ActiveCallView: View {
 
             // Keypad
             Button(action: { showDTMFKeypad.toggle() }) {
-                Label("Keypad", systemImage: "circle.grid.3x3.fill")
+                AdaptiveLabel(
+                    title: "Keypad",
+                    systemImage: "circle.grid.3x3.fill",
+                    isCompact: isCompact
+                )
             }
             .buttonStyle(ControlButtonStyle(isActive: showDTMFKeypad))
             .keyboardShortcut("k", modifiers: .command)
@@ -187,7 +208,11 @@ struct ActiveCallView: View {
 
             // End Call
             Button(action: { viewModel.hangupCall() }) {
-                Label("End", systemImage: "phone.down.fill")
+                AdaptiveLabel(
+                    title: "End",
+                    systemImage: "phone.down.fill",
+                    isCompact: isCompact
+                )
             }
             .buttonStyle(CallButtonStyle(color: .red))
             .keyboardShortcut(.escape, modifiers: [])
@@ -238,6 +263,23 @@ struct ActiveCallView: View {
         case .established: return "Connected"
         case .held: return "On Hold"
         case .ended: return "Call Ended"
+        }
+    }
+}
+
+// MARK: - Adaptive Label
+
+/// Label that shows icon + text or icon-only based on available space.
+private struct AdaptiveLabel: View {
+    let title: String
+    let systemImage: String
+    let isCompact: Bool
+
+    var body: some View {
+        if isCompact {
+            Image(systemName: systemImage)
+        } else {
+            Label(title, systemImage: systemImage)
         }
     }
 }
@@ -380,4 +422,9 @@ private struct DTMFKey: View {
 #Preview("Active Call") {
     ActiveCallView(viewModel: AppViewModel())
         .frame(width: 320, height: 400)
+}
+
+#Preview("Compact") {
+    ActiveCallView(viewModel: AppViewModel())
+        .frame(width: 250, height: 400)
 }
