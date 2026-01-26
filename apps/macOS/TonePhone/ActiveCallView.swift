@@ -14,10 +14,12 @@ import SwiftUI
 /// - Large avatar with gradient background
 /// - Clear visual hierarchy for caller info
 /// - Circular control buttons with proper hit targets
+/// - Full-screen DTMF keypad with digit history
 /// - Smooth animations and transitions
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showDTMFKeypad = false
+    @State private var dtmfHistory: String = ""
     @State private var pulseAnimation = false
 
     // MARK: - Layout Constants
@@ -33,6 +35,27 @@ struct ActiveCallView: View {
     // MARK: - Body
 
     var body: some View {
+        ZStack {
+            // Background
+            backgroundGradient
+
+            if showDTMFKeypad {
+                // Full-screen DTMF keypad mode
+                dtmfKeypadFullScreen
+                    .transition(.opacity)
+            } else {
+                // Normal call view
+                normalCallView
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.25), value: showDTMFKeypad)
+    }
+
+    // MARK: - Normal Call View
+
+    private var normalCallView: some View {
         VStack(spacing: 0) {
             Spacer()
                 .frame(minHeight: 24, maxHeight: 48)
@@ -43,25 +66,110 @@ struct ActiveCallView: View {
             Spacer()
                 .frame(minHeight: 24, maxHeight: .infinity)
 
-            // DTMF Keypad (expandable)
-            if showDTMFKeypad {
-                DTMFKeypadView(onDigitPressed: { digit in
-                    viewModel.sendDTMF(digit)
-                })
-                .padding(.bottom, 24)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-
             // Call controls
             callControlsSection
                 .padding(.bottom, 32)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(backgroundGradient)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showDTMFKeypad)
+    }
+
+    // MARK: - DTMF Keypad Full Screen
+
+    private var dtmfKeypadFullScreen: some View {
+        VStack(spacing: 0) {
+            // Header with digit history
+            dtmfHistoryHeader
+                .padding(.top, 24)
+
+            Spacer()
+                .frame(minHeight: 16, maxHeight: 32)
+
+            // Keypad
+            DTMFKeypadView(onDigitPressed: { digit in
+                dtmfHistory.append(digit)
+                viewModel.sendDTMF(digit)
+            })
+
+            Spacer()
+                .frame(minHeight: 24, maxHeight: .infinity)
+
+            // Back and End Call buttons
+            dtmfBottomControls
+                .padding(.bottom, 32)
+        }
+        .padding(.horizontal, 32)
+    }
+
+    private var dtmfHistoryHeader: some View {
+        VStack(spacing: 8) {
+            // Digit history display
+            if dtmfHistory.isEmpty {
+                Text("Enter digits")
+                    .font(.system(size: 32, weight: .light, design: .rounded))
+                    .foregroundColor(.secondary)
+            } else {
+                Text(dtmfHistory)
+                    .font(.system(size: 32, weight: .regular, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+
+            // Remote party name (smaller)
+            Text(remotePartyDisplay)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.secondary)
+        }
+        .frame(height: 80)
+    }
+
+    private var dtmfBottomControls: some View {
+        HStack(spacing: Layout.buttonSpacing) {
+            // Delete button (backspace)
+            Button(action: {
+                if !dtmfHistory.isEmpty {
+                    dtmfHistory.removeLast()
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+                        .frame(width: Layout.controlButtonSize, height: Layout.controlButtonSize)
+
+                    Image(systemName: "delete.left.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(dtmfHistory.isEmpty ? .secondary : .primary)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(dtmfHistory.isEmpty)
+            .accessibilityLabel("Delete last digit")
+
+            // End call button
+            CallActionButton(
+                icon: "phone.down.fill",
+                backgroundColor: .red,
+                size: Layout.endCallButtonSize,
+                action: { viewModel.hangupCall() }
+            )
+            .accessibilityLabel("End call")
+
+            // Back button (hide keypad)
+            Button(action: {
+                showDTMFKeypad = false
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+                        .frame(width: Layout.controlButtonSize, height: Layout.controlButtonSize)
+
+                    Image(systemName: "xmark")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Hide keypad")
+        }
     }
 
     // MARK: - Background
@@ -293,8 +401,8 @@ struct ActiveCallView: View {
                 CallControlButton(
                     icon: "circle.grid.3x3.fill",
                     label: "Keypad",
-                    isActive: showDTMFKeypad,
-                    action: { showDTMFKeypad.toggle() }
+                    isActive: false,
+                    action: { showDTMFKeypad = true }
                 )
 
                 // Hold
@@ -440,7 +548,6 @@ struct DTMFKeypadView: View {
                 }
             }
         }
-        .padding(.horizontal, 24)
     }
 }
 
