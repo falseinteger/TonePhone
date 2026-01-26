@@ -426,6 +426,8 @@ final class AppViewModel: ObservableObject {
 
         if let password = AccountStore.shared.getPassword(for: account.id) {
             registerAccountWithCore(account, password: password)
+        } else {
+            errorMessage = "Password missing for \(account.username). Please edit the account."
         }
     }
 
