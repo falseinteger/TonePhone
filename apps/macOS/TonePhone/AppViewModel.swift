@@ -155,8 +155,10 @@ final class AppViewModel: ObservableObject {
             accountStates[accountID] = state
             updateRegistrationStatus()
 
-            // Handle connection completion
-            if connectingAccount != nil {
+            // Handle connection completion - only for the account we're connecting
+            if let connectingAccount,
+               let connectingBridgeID = accountIDMapping[connectingAccount.id],
+               connectingBridgeID == accountID {
                 switch state {
                 case .registered:
                     // Auto-complete connection when registered
@@ -169,11 +171,11 @@ final class AppViewModel: ObservableObject {
                 case .failed(let reason):
                     // Auto-login failed: go to account list and show error
                     if currentScreen == .connecting {
-                        let accountName = connectingAccount?.displayName.isEmpty == false
-                            ? connectingAccount?.displayName
-                            : connectingAccount?.username
-                        errorMessage = "Failed to connect to \(accountName ?? "account"): \(reason ?? "Connection failed")"
-                        connectingAccount = nil
+                        let accountName = connectingAccount.displayName.isEmpty == false
+                            ? connectingAccount.displayName
+                            : connectingAccount.username
+                        errorMessage = "Failed to connect to \(accountName): \(reason ?? "Connection failed")"
+                        self.connectingAccount = nil
                         currentScreen = .accountList
                     }
                 default:
@@ -326,10 +328,13 @@ final class AppViewModel: ObservableObject {
         if let existingBridgeID = accountIDMapping[account.id] {
             do {
                 try TonePhoneCore.shared.removeAccount(existingBridgeID)
+                accountStates.removeValue(forKey: existingBridgeID)
+                accountIDMapping.removeValue(forKey: account.id)
             } catch {
+                errorMessage = "Failed to update account: \(error.localizedDescription)"
                 print("Failed to remove existing account: \(error)")
+                return
             }
-            accountStates.removeValue(forKey: existingBridgeID)
         }
 
         // Add new account to core
