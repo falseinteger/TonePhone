@@ -62,6 +62,19 @@ enum AppScreen: Equatable {
     case accountList
     /// Connected to an account, showing main interface.
     case activeAccount
+    /// Active call in progress.
+    case activeCall
+}
+
+/// Simplified call state for UI display.
+enum UICallState: Equatable {
+    case idle
+    case outgoing
+    case incoming(remoteURI: String?)
+    case early
+    case established
+    case held
+    case ended(reason: String?)
 }
 
 /// Main view model for tracking application state.
@@ -97,6 +110,48 @@ final class AppViewModel: ObservableObject {
 
     /// Error message to display to user.
     @Published var errorMessage: String?
+
+    // MARK: - Call State
+
+    /// Current call state for UI display.
+    @Published private(set) var callState: UICallState = .idle
+
+    /// Active call ID (if any).
+    @Published private(set) var activeCallID: CallID?
+
+    /// Remote party URI for the current call.
+    @Published private(set) var remotePartyURI: String?
+
+    /// Remote party display name (parsed from URI or provided).
+    @Published private(set) var remotePartyName: String?
+
+    /// Whether the current call is muted.
+    @Published private(set) var isMuted = false
+
+    /// Whether the current call is on hold.
+    @Published private(set) var isOnHold = false
+
+    /// Call duration in seconds.
+    @Published private(set) var callDuration: TimeInterval = 0
+
+    /// Formatted call duration string (MM:SS or HH:MM:SS).
+    var callDurationFormatted: String {
+        let hours = Int(callDuration) / 3600
+        let minutes = (Int(callDuration) % 3600) / 60
+        let seconds = Int(callDuration) % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+
+    /// Timer for updating call duration.
+    private var callDurationTimer: Timer?
+
+    /// Call start time for duration calculation.
+    private var callStartTime: Date?
 
     /// Tracked account states by ID.
     private var accountStates: [AccountID: AccountState] = [:]
@@ -183,10 +238,111 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-        case .coreStateChanged, .callStateChanged, .mediaChanged:
+        case .callStateChanged(let callID, let state):
+            handleCallStateChanged(callID: callID, state: state)
+
+        case .coreStateChanged, .mediaChanged:
             // Handled elsewhere or not needed for registration status
             break
         }
+    }
+
+    /// Handles call state changes from TonePhoneCore.
+    private func handleCallStateChanged(callID: CallID, state: CallState) {
+        switch state {
+        case .idle:
+            callState = .idle
+            clearCallState()
+
+        case .outgoing:
+            activeCallID = callID
+            callState = .outgoing
+            currentScreen = .activeCall
+
+        case .incoming(let remoteURI):
+            activeCallID = callID
+            remotePartyURI = remoteURI
+            remotePartyName = parseDisplayName(from: remoteURI)
+            callState = .incoming(remoteURI: remoteURI)
+            currentScreen = .activeCall
+
+        case .early:
+            callState = .early
+
+        case .established:
+            callState = .established
+            isOnHold = false
+            startCallDurationTimer()
+
+        case .held:
+            callState = .held
+            isOnHold = true
+
+        case .ended(let reason):
+            callState = .ended(reason: reason)
+            stopCallDurationTimer()
+            // Return to active account screen after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.clearCallState()
+                if self?.activeAccount != nil {
+                    self?.currentScreen = .activeAccount
+                } else {
+                    self?.currentScreen = .accountList
+                }
+            }
+        }
+    }
+
+    /// Clears all call-related state.
+    private func clearCallState() {
+        activeCallID = nil
+        remotePartyURI = nil
+        remotePartyName = nil
+        isMuted = false
+        isOnHold = false
+        callDuration = 0
+        callStartTime = nil
+        stopCallDurationTimer()
+    }
+
+    /// Parses a display name from a SIP URI.
+    private func parseDisplayName(from uri: String?) -> String? {
+        guard let uri = uri else { return nil }
+
+        // Try to extract display name from "Display Name" <sip:user@domain> format
+        if let range = uri.range(of: "\"([^\"]+)\"", options: .regularExpression) {
+            return String(uri[range]).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
+
+        // Extract user part from sip:user@domain
+        if uri.hasPrefix("sip:") {
+            let withoutScheme = String(uri.dropFirst(4))
+            if let atIndex = withoutScheme.firstIndex(of: "@") {
+                return String(withoutScheme[..<atIndex])
+            }
+            return withoutScheme
+        }
+
+        return uri
+    }
+
+    /// Starts the call duration timer.
+    private func startCallDurationTimer() {
+        callStartTime = Date()
+        callDuration = 0
+        callDurationTimer?.invalidate()
+        callDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, let startTime = self.callStartTime else { return }
+                self.callDuration = Date().timeIntervalSince(startTime)
+            }
+        }
+    }
+
+    /// Stops the call duration timer.
+    private func stopCallDurationTimer() {
+        callDurationTimer?.invalidate()
+        callDurationTimer = nil
     }
 
     /// Recalculates the aggregated registration status from all account states.
@@ -463,5 +619,100 @@ final class AppViewModel: ObservableObject {
         activeAccount = nil
         currentScreen = .accountList
         updateRegistrationStatus()
+    }
+
+    // MARK: - Call Control
+
+    /// Makes an outgoing call to the specified URI.
+    /// - Parameter uri: The SIP URI to call.
+    func makeCall(to uri: String) {
+        do {
+            let callID = try TonePhoneCore.shared.makeCall(to: uri)
+            activeCallID = callID
+            remotePartyURI = uri
+            remotePartyName = parseDisplayName(from: uri)
+        } catch {
+            errorMessage = "Failed to start call: \(error.localizedDescription)"
+            print("AppViewModel: Failed to make call: \(error)")
+        }
+    }
+
+    /// Answers an incoming call.
+    func answerCall() {
+        guard let callID = activeCallID else {
+            print("AppViewModel: No active call to answer")
+            return
+        }
+
+        do {
+            try TonePhoneCore.shared.answerCall(callID)
+        } catch {
+            errorMessage = "Failed to answer call: \(error.localizedDescription)"
+            print("AppViewModel: Failed to answer call: \(error)")
+        }
+    }
+
+    /// Hangs up the current call.
+    func hangupCall() {
+        guard let callID = activeCallID else {
+            print("AppViewModel: No active call to hang up")
+            return
+        }
+
+        do {
+            try TonePhoneCore.shared.hangupCall(callID)
+        } catch {
+            errorMessage = "Failed to hang up call: \(error.localizedDescription)"
+            print("AppViewModel: Failed to hang up call: \(error)")
+        }
+    }
+
+    /// Toggles mute state for the current call.
+    func toggleMute() {
+        guard let callID = activeCallID else {
+            print("AppViewModel: No active call to mute")
+            return
+        }
+
+        let newMuteState = !isMuted
+        do {
+            try TonePhoneCore.shared.muteCall(callID, mute: newMuteState)
+            isMuted = newMuteState
+        } catch {
+            errorMessage = "Failed to \(newMuteState ? "mute" : "unmute"): \(error.localizedDescription)"
+            print("AppViewModel: Failed to toggle mute: \(error)")
+        }
+    }
+
+    /// Toggles hold state for the current call.
+    func toggleHold() {
+        guard let callID = activeCallID else {
+            print("AppViewModel: No active call to hold")
+            return
+        }
+
+        let newHoldState = !isOnHold
+        do {
+            try TonePhoneCore.shared.holdCall(callID, hold: newHoldState)
+            // Note: isOnHold will be updated when we receive the state change event
+        } catch {
+            errorMessage = "Failed to \(newHoldState ? "hold" : "resume"): \(error.localizedDescription)"
+            print("AppViewModel: Failed to toggle hold: \(error)")
+        }
+    }
+
+    /// Sends DTMF digits during the current call.
+    /// - Parameter digit: The DTMF digit to send.
+    func sendDTMF(_ digit: String) {
+        guard let callID = activeCallID else {
+            print("AppViewModel: No active call for DTMF")
+            return
+        }
+
+        do {
+            try TonePhoneCore.shared.sendDTMF(callID, digits: digit)
+        } catch {
+            print("AppViewModel: Failed to send DTMF: \(error)")
+        }
     }
 }

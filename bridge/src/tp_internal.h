@@ -72,4 +72,39 @@ struct ua;
  */
 tp_account_id_t tp_account_find_id_by_ua(const struct ua *ua);
 
+/**
+ * @brief Get the default account's UA pointer
+ * @return The UA pointer, or NULL if no default account
+ *
+ * Returns a reference to the UA that must be released with mem_deref().
+ */
+struct ua *tp_account_get_default_ua(void);
+
+/* =============================================================================
+ * Call ID Mapping (from tp_call.c)
+ * ============================================================================= */
+
+/* Forward declaration of baresip types */
+struct call;
+
+/**
+ * @brief Look up call ID by call pointer
+ * @param call The call pointer from baresip
+ * @return The call ID, or TP_INVALID_ID if not found
+ */
+tp_call_id_t tp_call_find_id_by_ptr(const struct call *call);
+
+/**
+ * @brief Register an incoming call and assign it an ID
+ * @param call The incoming call pointer from baresip
+ * @return The assigned call ID, or TP_INVALID_ID if no slot available
+ */
+tp_call_id_t tp_call_register_incoming(struct call *call);
+
+/**
+ * @brief Unregister a call (called when call ends)
+ * @param id The call ID to unregister
+ */
+void tp_call_unregister(tp_call_id_t id);
+
 #endif /* TP_INTERNAL_H */
