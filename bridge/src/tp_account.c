@@ -443,6 +443,109 @@ tp_error_t tp_account_set_default(tp_account_id_t id)
     return TP_OK;
 }
 
+tp_error_t tp_account_get_state(tp_account_id_t id, tp_account_state_t *out_state)
+{
+    account_entry_t *entry;
+    struct ua *ua;
+
+    if (id == TP_INVALID_ID || !out_state) {
+        return TP_ERR_INVALID_ARG;
+    }
+
+    pthread_mutex_lock(&g_mutex);
+
+    entry = find_account(id);
+    if (!entry) {
+        pthread_mutex_unlock(&g_mutex);
+        return TP_ERR_NOT_FOUND;
+    }
+
+    ua = entry->ua;
+    if (!ua) {
+        pthread_mutex_unlock(&g_mutex);
+        *out_state = TP_ACCOUNT_STATE_UNREGISTERED;
+        return TP_OK;
+    }
+
+    /* Query baresip for registration state.
+     *
+     * Note: baresip doesn't expose ua_isregistering(), so we cannot detect
+     * the transitional "registering" state synchronously. The REGISTERING
+     * state is tracked via events (TP_EVENT_ACCOUNT_STATE_CHANGED).
+     * This function returns UNREGISTERED for accounts that are in the
+     * process of registering. Use events for real-time state tracking.
+     */
+    if (ua_isregistered(ua)) {
+        *out_state = TP_ACCOUNT_STATE_REGISTERED;
+    } else if (ua_regfailed(ua)) {
+        *out_state = TP_ACCOUNT_STATE_FAILED;
+    } else {
+        *out_state = TP_ACCOUNT_STATE_UNREGISTERED;
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+
+    return TP_OK;
+}
+
+tp_error_t tp_account_get_default(tp_account_id_t *out_id)
+{
+    if (!out_id) {
+        return TP_ERR_INVALID_ARG;
+    }
+
+    pthread_mutex_lock(&g_mutex);
+    *out_id = g_accounts.default_id;
+    pthread_mutex_unlock(&g_mutex);
+
+    return TP_OK;
+}
+
+uint32_t tp_account_count(void)
+{
+    uint32_t count = 0;
+
+    pthread_mutex_lock(&g_mutex);
+
+    for (int i = 0; i < MAX_ACCOUNTS; i++) {
+        if (g_accounts.accounts[i].in_use && !g_accounts.accounts[i].removing) {
+            count++;
+        }
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+
+    return count;
+}
+
+tp_error_t tp_account_get_id_at_index(uint32_t index, tp_account_id_t *out_id)
+{
+    uint32_t current = 0;
+
+    if (!out_id) {
+        return TP_ERR_INVALID_ARG;
+    }
+
+    *out_id = TP_INVALID_ID;
+
+    pthread_mutex_lock(&g_mutex);
+
+    for (int i = 0; i < MAX_ACCOUNTS; i++) {
+        if (g_accounts.accounts[i].in_use && !g_accounts.accounts[i].removing) {
+            if (current == index) {
+                *out_id = g_accounts.accounts[i].id;
+                pthread_mutex_unlock(&g_mutex);
+                return TP_OK;
+            }
+            current++;
+        }
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+
+    return TP_ERR_NOT_FOUND;
+}
+
 /* =============================================================================
  * ID Lookup (for event system)
  * ============================================================================= */
