@@ -265,12 +265,13 @@ Under the app container:
 
 ```
 ~/Library/Application Support/TonePhone/
-├── config.json           # App settings
+├── config                # baresip configuration file
 ├── accounts.json         # Account list (no secrets)
-├── history.json          # Call history
+├── history.json          # Call history (future)
 └── logs/
-    ├── tonephone.log     # App log
-    └── sip-trace.log     # SIP trace (when enabled)
+    ├── tonephone.log     # Current log file
+    ├── tonephone.log.1   # Rotated logs (up to .3)
+    └── ...
 ```
 
 ---
@@ -288,6 +289,28 @@ Logging is a first-class feature, not an afterthought.
 | Info | Significant events (calls, registration) |
 | Debug | Detailed flow (development) |
 | Trace | Wire-level detail (SIP messages) |
+
+### File Logging
+
+Logs are written to files in `~/Library/Application Support/TonePhone/logs/`:
+
+```text
+logs/
+├── tonephone.log       # Current log file
+├── tonephone.log.1     # Previous log (after rotation)
+├── tonephone.log.2     # Older log
+└── tonephone.log.3     # Oldest kept log
+```
+
+**Log rotation:** Files are rotated when they exceed 5 MB. Up to 3 rotated files are kept.
+
+**Format:** Each line includes timestamp, level, and message:
+```text
+2024-01-25 14:32:01 [INFO ] tp_core: initialized successfully
+2024-01-25 14:32:01 [DEBUG] tp_account: registering account 1
+```
+
+**Security:** Passwords and credentials are never logged, even at debug/trace level.
 
 ### In-App Features
 
