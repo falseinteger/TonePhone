@@ -497,6 +497,91 @@ public final class TonePhoneCore {
         }
     }
 
+    // MARK: - Call Control
+
+    /// Start an outgoing call.
+    ///
+    /// - Parameter uri: The SIP URI to call (e.g., "sip:user@domain.com")
+    /// - Returns: The call ID for the new call
+    /// - Throws: `TonePhoneError` if call setup fails
+    public func makeCall(to uri: String) throws -> CallID {
+        var callID: tp_call_id_t = TP_INVALID_ID
+
+        let result = uri.withCString { uriPtr in
+            tp_call_start(uriPtr, &callID)
+        }
+
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+
+        return CallID(rawValue: callID)
+    }
+
+    /// Answer an incoming call.
+    ///
+    /// - Parameter callID: The call ID to answer
+    /// - Throws: `TonePhoneError` if answering fails
+    public func answerCall(_ callID: CallID) throws {
+        let result = tp_call_answer(callID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Hang up a call.
+    ///
+    /// - Parameter callID: The call ID to hang up
+    /// - Throws: `TonePhoneError` if hangup fails
+    public func hangupCall(_ callID: CallID) throws {
+        let result = tp_call_hangup(callID.rawValue)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Hold or resume a call.
+    ///
+    /// - Parameters:
+    ///   - callID: The call ID
+    ///   - hold: `true` to hold, `false` to resume
+    /// - Throws: `TonePhoneError` if hold/resume fails
+    public func holdCall(_ callID: CallID, hold: Bool) throws {
+        let result = tp_call_hold(callID.rawValue, hold)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Mute or unmute a call.
+    ///
+    /// - Parameters:
+    ///   - callID: The call ID
+    ///   - mute: `true` to mute, `false` to unmute
+    /// - Throws: `TonePhoneError` if mute/unmute fails
+    public func muteCall(_ callID: CallID, mute: Bool) throws {
+        let result = tp_call_mute(callID.rawValue, mute)
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Send DTMF tones during a call.
+    ///
+    /// - Parameters:
+    ///   - callID: The call ID
+    ///   - digits: The DTMF digits to send (0-9, *, #, A-D)
+    /// - Throws: `TonePhoneError` if sending DTMF fails
+    public func sendDTMF(_ callID: CallID, digits: String) throws {
+        let result = digits.withCString { digitsPtr in
+            tp_call_send_dtmf(callID.rawValue, digitsPtr)
+        }
+
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
     // MARK: - Event Handling
 
     private func registerEventCallback() {

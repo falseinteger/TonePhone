@@ -440,3 +440,21 @@ tp_account_id_t tp_account_find_id_by_ua(const struct ua *ua)
 
     return result;
 }
+
+struct ua *tp_account_get_default_ua(void)
+{
+    struct ua *ua = NULL;
+
+    pthread_mutex_lock(&g_mutex);
+
+    if (g_accounts.default_id != TP_INVALID_ID) {
+        account_entry_t *entry = find_account(g_accounts.default_id);
+        if (entry && entry->ua) {
+            ua = mem_ref(entry->ua);
+        }
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+
+    return ua;
+}
