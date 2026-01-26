@@ -294,7 +294,7 @@ Logging is a first-class feature, not an afterthought.
 
 Logs are written to files in `~/Library/Application Support/TonePhone/logs/`:
 
-```
+```text
 logs/
 ├── tonephone.log       # Current log file
 ├── tonephone.log.1     # Previous log (after rotation)
@@ -305,7 +305,7 @@ logs/
 **Log rotation:** Files are rotated when they exceed 5 MB. Up to 3 rotated files are kept.
 
 **Format:** Each line includes timestamp, level, and message:
-```
+```text
 2024-01-25 14:32:01 [INFO ] tp_core: initialized successfully
 2024-01-25 14:32:01 [DEBUG] tp_account: registering account 1
 ```
