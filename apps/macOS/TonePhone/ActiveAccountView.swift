@@ -117,8 +117,10 @@ struct ActiveAccountView: View {
 
     /// Formats a user input into a proper SIP URI if needed.
     private func formatURI(_ input: String) -> String {
-        // Remove any whitespace
-        let cleaned = input.trimmingCharacters(in: .whitespaces)
+        // Remove all whitespace and newlines
+        let cleaned = input.components(separatedBy: .whitespacesAndNewlines).joined()
+
+        guard !cleaned.isEmpty else { return "" }
 
         // If already a SIP URI, use as-is
         if cleaned.lowercased().hasPrefix("sip:") || cleaned.lowercased().hasPrefix("sips:") {

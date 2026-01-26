@@ -284,7 +284,7 @@ final class AppViewModel: ObservableObject {
         case .ended(let reason):
             callState = .ended(reason: reason)
             stopCallDurationTimer()
-            scheduleCallCleanup(delay: 1.5)
+            scheduleCallCleanup(callID: callID, delay: 1.5)
         }
     }
 
@@ -302,17 +302,17 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Schedules cleanup after call ends, canceling any existing pending cleanup.
-    private func scheduleCallCleanup(delay: TimeInterval = 1.0) {
+    /// - Parameters:
+    ///   - callID: The call ID that ended (used to verify cleanup targets correct call)
+    ///   - delay: Delay before cleanup runs
+    private func scheduleCallCleanup(callID: CallID, delay: TimeInterval = 1.0) {
         // Cancel any existing pending cleanup
         cancelPendingCleanup()
-
-        // Capture current call ID to verify it hasn't changed
-        let callIDAtSchedule = activeCallID
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             // Only cleanup if the call ID hasn't changed (no new call started)
-            guard self.activeCallID == callIDAtSchedule else { return }
+            guard self.activeCallID == callID else { return }
 
             self.clearCallState()
             if self.activeAccount != nil {
@@ -697,7 +697,7 @@ final class AppViewModel: ObservableObject {
             // Immediately show ended state and schedule cleanup
             callState = .ended(reason: nil)
             stopCallDurationTimer()
-            scheduleCallCleanup(delay: 1.0)
+            scheduleCallCleanup(callID: callID, delay: 1.0)
         } catch {
             errorMessage = "Failed to hang up call: \(error.localizedDescription)"
             print("AppViewModel: Failed to hang up call: \(error)")
