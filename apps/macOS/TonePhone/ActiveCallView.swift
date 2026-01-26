@@ -346,26 +346,14 @@ private struct DTMFKeypadPopover: View {
     var body: some View {
         VStack(spacing: 12) {
             // History display
-            HStack {
-                Text(dtmfHistory.isEmpty ? "Digits" : dtmfHistory)
-                    .font(.system(size: 18, weight: .medium, design: .monospaced))
-                    .foregroundColor(dtmfHistory.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !dtmfHistory.isEmpty {
-                    Button(action: {
-                        dtmfHistory.removeLast()
-                    }) {
-                        Image(systemName: "delete.left")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(6)
+            Text(dtmfHistory.isEmpty ? "Digits" : dtmfHistory)
+                .font(.system(size: 18, weight: .medium, design: .monospaced))
+                .foregroundColor(dtmfHistory.isEmpty ? .secondary : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(6)
 
             // Keypad grid
             VStack(spacing: 8) {
