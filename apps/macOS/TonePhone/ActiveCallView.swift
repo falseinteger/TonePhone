@@ -203,6 +203,11 @@ struct ActiveCallView: View {
                     }
                 )
             }
+            .onChange(of: showDTMFKeypad) { isShowing in
+                if !isShowing {
+                    dtmfHistory = ""
+                }
+            }
 
             Spacer()
 
@@ -335,7 +340,7 @@ private struct DTMFKeypadPopover: View {
         [.init("1", letters: ""), .init("2", letters: "ABC"), .init("3", letters: "DEF")],
         [.init("4", letters: "GHI"), .init("5", letters: "JKL"), .init("6", letters: "MNO")],
         [.init("7", letters: "PQRS"), .init("8", letters: "TUV"), .init("9", letters: "WXYZ")],
-        [.init("*", letters: ""), .init("0", letters: "+"), .init("#", letters: "")]
+        [.init("*", letters: ""), .init("0", letters: ""), .init("#", letters: "")]
     ]
 
     var body: some View {
