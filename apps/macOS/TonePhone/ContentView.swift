@@ -10,52 +10,65 @@ import SwiftUI
 /// Main content view for the TonePhone application window.
 ///
 /// Manages the navigation between different screens based on app state.
-/// Shows account list when not connected, active account view when connected.
+/// Follows macOS Human Interface Guidelines for window structure.
 struct ContentView: View {
-    /// View model that tracks account and registration state.
     @StateObject private var viewModel = AppViewModel()
 
     var body: some View {
-        Group {
-            switch viewModel.currentScreen {
-            case .connecting:
-                LaunchConnectingView(viewModel: viewModel)
-            case .accountList:
-                AccountListView(viewModel: viewModel)
-            case .activeAccount:
-                ActiveAccountView(viewModel: viewModel)
-            case .activeCall:
-                ActiveCallView(viewModel: viewModel)
+        content
+            .frame(minWidth: 280, minHeight: 400)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .sheet(isPresented: $viewModel.isAccountSheetPresented) {
+                AccountConfigView(account: viewModel.selectedAccount)
+                    .onSave { account, password in
+                        viewModel.saveAccount(account, password: password)
+                    }
+                    .onDelete { accountID in
+                        viewModel.deleteAccount(id: accountID)
+                    }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $viewModel.isAccountSheetPresented) {
-            AccountConfigView(account: viewModel.selectedAccount)
-                .onSave { account, password in
-                    viewModel.saveAccount(account, password: password)
+            .sheet(isPresented: $viewModel.isConnectionSheetPresented) {
+                ConnectionProgressView(viewModel: viewModel)
+            }
+            .alert("Error", isPresented: errorBinding) {
+                Button("OK", role: .cancel) {
+                    viewModel.errorMessage = nil
                 }
-                .onDelete { accountID in
-                    viewModel.deleteAccount(id: accountID)
+            } message: {
+                if let message = viewModel.errorMessage {
+                    Text(message)
                 }
+            }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        switch viewModel.currentScreen {
+        case .connecting:
+            LaunchConnectingView(viewModel: viewModel)
+        case .accountList:
+            AccountListView(viewModel: viewModel)
+        case .activeAccount:
+            ActiveAccountView(viewModel: viewModel)
+        case .activeCall:
+            ActiveCallView(viewModel: viewModel)
         }
-        .sheet(isPresented: $viewModel.isConnectionSheetPresented) {
-            ConnectionProgressView(viewModel: viewModel)
-        }
-        .alert("Error", isPresented: .init(
+    }
+
+    // MARK: - Helpers
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }
-        )) {
-            Button("OK") {
-                viewModel.errorMessage = nil
-            }
-        } message: {
-            if let message = viewModel.errorMessage {
-                Text(message)
-            }
-        }
+        )
     }
 }
 
 #Preview {
     ContentView()
+        .frame(width: 320, height: 480)
 }
