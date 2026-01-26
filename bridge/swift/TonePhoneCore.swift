@@ -342,27 +342,43 @@ public final class TonePhoneCore {
             // Module lines are required to load static modules
             let minimalConfig = """
             # TonePhone configuration
+            # Audio-only SIP client - video modules are not included
 
+            #------------------------------------------------------------
             # Modules (statically linked, .so extension is optional)
+            #------------------------------------------------------------
+            # Audio codecs
             module g711.so
             module opus.so
+
+            # Audio I/O (macOS/iOS native)
             module audiounit.so
+
+            # NAT traversal
             module stun.so
             module turn.so
             module ice.so
+
+            # Security (SRTP media encryption)
             module srtp.so
             module dtls_srtp.so
+
+            # Account management
             module account.so
 
-            # Audio device (AudioUnit on macOS/iOS)
+            #------------------------------------------------------------
+            # Audio settings
+            #------------------------------------------------------------
             audio_player audiounit
             audio_source audiounit
             audio_alert audiounit
 
-            # Audio codec priority
+            # Codec priority (prefer Opus for quality, G.711 as fallback)
             audio_codecs opus,g711
 
+            #------------------------------------------------------------
             # SIP settings
+            #------------------------------------------------------------
             sip_listen 0.0.0.0:0
 
             """
