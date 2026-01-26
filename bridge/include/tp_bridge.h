@@ -338,6 +338,57 @@ tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits);
 void tp_set_event_callback(tp_event_callback_t callback, void *ctx);
 
 /* =============================================================================
+ * Logging Functions
+ * ============================================================================= */
+
+/**
+ * @brief Initialize file logging
+ * @param log_dir Directory where log files will be stored
+ * @return TP_OK on success, error code otherwise
+ *
+ * Log files are automatically rotated when they exceed 5 MB.
+ * Up to 3 rotated files are kept (tonephone.log.1, .2, .3).
+ */
+tp_error_t tp_log_init(const char *log_dir);
+
+/**
+ * @brief Close file logging
+ *
+ * Flushes and closes the log file. Called automatically by tp_shutdown().
+ */
+void tp_log_close(void);
+
+/**
+ * @brief Set the log level
+ * @param level Minimum level for messages to be logged
+ * @return TP_OK on success
+ *
+ * Messages below this level are discarded.
+ * Default level is TP_LOG_INFO.
+ */
+tp_error_t tp_log_set_level(tp_log_level_t level);
+
+/**
+ * @brief Get the current log level
+ * @return Current log level
+ */
+tp_log_level_t tp_log_get_level(void);
+
+/**
+ * @brief Get the current log file path
+ * @param buf Buffer to store the path
+ * @param size Size of the buffer
+ * @return TP_OK on success, error code otherwise
+ */
+tp_error_t tp_log_get_path(char *buf, size_t size);
+
+/**
+ * @brief Flush log buffers to disk
+ * @return TP_OK on success
+ */
+tp_error_t tp_log_flush(void);
+
+/* =============================================================================
  * Utility Functions
  * ============================================================================= */
 

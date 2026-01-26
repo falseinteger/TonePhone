@@ -245,8 +245,14 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         return TP_ERR_INTERNAL;
     }
 
-    /* Handle log_path - baresip logging is handled via config */
-    (void)log_path;
+    /* Initialize file logging if path provided */
+    if (log_path && log_path[0] != '\0') {
+        tp_error_t log_err = tp_log_init(log_path);
+        if (log_err != TP_OK) {
+            warning("tp_core: tp_log_init failed: %s\n", tp_error_string(log_err));
+            /* Continue without file logging - not fatal */
+        }
+    }
 
     /* Initialize event callback system */
     tp_error_t tp_err = tp_events_init();
@@ -442,6 +448,9 @@ void tp_shutdown(void)
 
     info("tp_core: =============================\n");
     info("tp_core: shutdown complete\n");
+
+    /* Close file logging last (after final log messages) */
+    tp_log_close();
 }
 
 /* =============================================================================
