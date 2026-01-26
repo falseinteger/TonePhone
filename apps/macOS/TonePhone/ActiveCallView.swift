@@ -96,14 +96,25 @@ struct ActiveCallView: View {
     }
 
     private var dtmfHistoryLabel: some View {
-        Text(dtmfHistory)
-            .font(.system(size: 16, weight: .medium, design: .monospaced))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(dtmfHistory)
+                    .font(.system(size: 16, weight: .medium, design: .monospaced))
+                    .lineLimit(1)
+                    .id("dtmf")
+            }
+            .onChange(of: dtmfHistory) { _ in
+                // Auto-scroll to show most recent digits
+                proxy.scrollTo("dtmf", anchor: .trailing)
+            }
+        }
+        .frame(maxWidth: 200)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
     }
 
     // MARK: - Control Bar
