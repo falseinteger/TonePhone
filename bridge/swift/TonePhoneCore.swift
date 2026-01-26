@@ -182,6 +182,49 @@ public enum CallState: Equatable, Sendable {
     }
 }
 
+/// Log level for filtering messages.
+public enum LogLevel: Int, Sendable, CaseIterable {
+    case error = 0
+    case warning = 1
+    case info = 2
+    case debug = 3
+    case trace = 4
+
+    /// Convert to C log level.
+    var cLevel: tp_log_level_t {
+        switch self {
+        case .error:   return TP_LOG_ERROR
+        case .warning: return TP_LOG_WARNING
+        case .info:    return TP_LOG_INFO
+        case .debug:   return TP_LOG_DEBUG
+        case .trace:   return TP_LOG_TRACE
+        }
+    }
+
+    /// Initialize from C log level.
+    init(from cLevel: tp_log_level_t) {
+        switch cLevel {
+        case TP_LOG_ERROR:   self = .error
+        case TP_LOG_WARNING: self = .warning
+        case TP_LOG_INFO:    self = .info
+        case TP_LOG_DEBUG:   self = .debug
+        case TP_LOG_TRACE:   self = .trace
+        default:             self = .info
+        }
+    }
+
+    /// Human-readable name.
+    public var name: String {
+        switch self {
+        case .error:   return "Error"
+        case .warning: return "Warning"
+        case .info:    return "Info"
+        case .debug:   return "Debug"
+        case .trace:   return "Trace"
+        }
+    }
+}
+
 // MARK: - ID Types
 
 /// Opaque account identifier.
@@ -290,16 +333,20 @@ public final class TonePhoneCore {
         // Ensure config directory exists with minimal config
         let effectiveConfigPath = try configPath ?? createDefaultConfigDirectory()
 
+        // Ensure logs directory exists
+        let effectiveLogPath = try logPath ?? createDefaultLogsDirectory()
+
         // Verify config file exists
         let configFile = URL(fileURLWithPath: effectiveConfigPath).appendingPathComponent("config")
         print("TonePhoneCore: Using config path: \(effectiveConfigPath)")
         print("TonePhoneCore: Config file exists: \(FileManager.default.fileExists(atPath: configFile.path))")
+        print("TonePhoneCore: Using log path: \(effectiveLogPath)")
 
         // Register event callback before init
         registerEventCallback()
 
-        // Initialize bridge
-        let initResult = tp_init(effectiveConfigPath, logPath)
+        // Initialize bridge (includes file logging)
+        let initResult = tp_init(effectiveConfigPath, effectiveLogPath)
         guard initResult == TP_OK else {
             tp_set_event_callback(nil, nil)
             throw TonePhoneError(from: initResult)
@@ -388,6 +435,28 @@ public final class TonePhoneCore {
         return configDir.path
     }
 
+    /// Creates a default logs directory.
+    /// - Returns: Path to the created logs directory.
+    private func createDefaultLogsDirectory() throws -> String {
+        let fileManager = FileManager.default
+
+        // Get Application Support directory
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw TonePhoneError.internalError
+        }
+
+        let logsDir = appSupport
+            .appendingPathComponent("TonePhone", isDirectory: true)
+            .appendingPathComponent("logs", isDirectory: true)
+
+        // Create directory if needed
+        if !fileManager.fileExists(atPath: logsDir.path) {
+            try fileManager.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        }
+
+        return logsDir.path
+    }
+
     /// Stop and shut down the TonePhone engine.
     ///
     /// This stops all network operations, ends all calls, unregisters all accounts,
@@ -408,6 +477,42 @@ public final class TonePhoneCore {
         tp_shutdown()
         isInitialized = false
         coreState = .idle
+    }
+
+    // MARK: - Logging
+
+    /// Set the minimum log level.
+    ///
+    /// Messages below this level are not written to the log file.
+    /// Default is `.info`.
+    ///
+    /// - Parameter level: The minimum log level
+    public func setLogLevel(_ level: LogLevel) {
+        tp_log_set_level(level.cLevel)
+    }
+
+    /// Get the current log level.
+    ///
+    /// - Returns: The current minimum log level
+    public func getLogLevel() -> LogLevel {
+        LogLevel(from: tp_log_get_level())
+    }
+
+    /// Get the path to the current log file.
+    ///
+    /// - Returns: The log file path, or nil if logging is not initialized
+    public func getLogFilePath() -> String? {
+        var buffer = [CChar](repeating: 0, count: 512)
+        let result = tp_log_get_path(&buffer, buffer.count)
+        guard result == TP_OK else { return nil }
+        return String(cString: buffer)
+    }
+
+    /// Flush log buffers to disk.
+    ///
+    /// Call this before exporting logs to ensure all messages are written.
+    public func flushLogs() {
+        tp_log_flush()
     }
 
     // MARK: - Account Management
