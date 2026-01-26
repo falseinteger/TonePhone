@@ -39,6 +39,11 @@ struct ActiveCallView: View {
                     // Call status
                     callStatusBadge
 
+                    // DTMF history (when digits have been entered)
+                    if !dtmfHistory.isEmpty {
+                        dtmfHistoryView
+                    }
+
                     Spacer()
                 }
 
@@ -106,6 +111,20 @@ struct ActiveCallView: View {
             Capsule()
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+    }
+
+    // MARK: - DTMF History
+
+    private var dtmfHistoryView: some View {
+        Text(dtmfHistory)
+            .font(.system(size: 20, weight: .medium, design: .monospaced))
+            .foregroundColor(.primary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
     }
 
     // MARK: - Control Bar
@@ -202,11 +221,6 @@ struct ActiveCallView: View {
                         viewModel.sendDTMF(digit)
                     }
                 )
-            }
-            .onChange(of: showDTMFKeypad) { isShowing in
-                if !isShowing {
-                    dtmfHistory = ""
-                }
             }
 
             Spacer()
