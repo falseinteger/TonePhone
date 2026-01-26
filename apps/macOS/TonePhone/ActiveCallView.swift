@@ -3,100 +3,196 @@
 //  TonePhone
 //
 //  View displayed during an active call with call controls.
+//  Design follows Apple Human Interface Guidelines.
 //
 
 import SwiftUI
 
 /// View displayed during an active call.
+///
+/// Follows Apple HIG with a FaceTime-inspired design featuring:
+/// - Large avatar with gradient background
+/// - Clear visual hierarchy for caller info
+/// - Circular control buttons with proper hit targets
+/// - Smooth animations and transitions
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showDTMFKeypad = false
+    @State private var pulseAnimation = false
+
+    // MARK: - Layout Constants
+
+    private enum Layout {
+        static let avatarSize: CGFloat = 120
+        static let controlButtonSize: CGFloat = 64
+        static let endCallButtonSize: CGFloat = 72
+        static let buttonSpacing: CGFloat = 32
+        static let contentSpacing: CGFloat = 8
+    }
+
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 0) {
-            // Call state header
-            callStateHeader
-                .padding(.top, 24)
+            Spacer()
+                .frame(minHeight: 24, maxHeight: 48)
+
+            // Caller info section
+            callerInfoSection
 
             Spacer()
-
-            // Remote party info and duration
-            VStack(spacing: 12) {
-                // Avatar
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.12))
-                        .frame(width: 80, height: 80)
-
-                    Text(remotePartyInitials)
-                        .font(.system(size: 28, weight: .medium, design: .rounded))
-                        .foregroundColor(.accentColor)
-                }
-
-                // Remote party name/number
-                Text(remotePartyDisplay)
-                    .font(.system(size: 20, weight: .semibold))
-                    .lineLimit(1)
-
-                // Call duration
-                if viewModel.callState == .established || viewModel.callState == .held {
-                    Text(viewModel.callDurationFormatted)
-                        .font(.system(size: 15, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
+                .frame(minHeight: 24, maxHeight: .infinity)
 
             // DTMF Keypad (expandable)
             if showDTMFKeypad {
                 DTMFKeypadView(onDigitPressed: { digit in
                     viewModel.sendDTMF(digit)
                 })
-                .padding(.horizontal, 40)
-                .padding(.bottom, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.bottom, 24)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
             }
 
             // Call controls
-            callControls
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+            callControlsSection
+                .padding(.bottom, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .animation(.easeInOut(duration: 0.2), value: showDTMFKeypad)
+        .background(backgroundGradient)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showDTMFKeypad)
     }
 
-    // MARK: - Call State Header
+    // MARK: - Background
 
-    private var callStateHeader: some View {
-        HStack(spacing: 8) {
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [
+                Color(nsColor: .windowBackgroundColor),
+                Color(nsColor: .windowBackgroundColor).opacity(0.95)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Caller Info Section
+
+    private var callerInfoSection: some View {
+        VStack(spacing: Layout.contentSpacing) {
+            // Avatar with status ring
+            avatarView
+                .padding(.bottom, 8)
+
+            // Caller name
+            Text(remotePartyDisplay)
+                .font(.system(size: 28, weight: .semibold, design: .default))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            // Call status and duration
+            callStatusView
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var avatarView: some View {
+        ZStack {
+            // Pulsing ring for connecting states
+            if shouldShowPulse {
+                Circle()
+                    .stroke(callStateColor.opacity(0.3), lineWidth: 3)
+                    .frame(width: Layout.avatarSize + 16, height: Layout.avatarSize + 16)
+                    .scaleEffect(pulseAnimation ? 1.15 : 1.0)
+                    .opacity(pulseAnimation ? 0 : 0.8)
+                    .animation(
+                        .easeInOut(duration: 1.5).repeatForever(autoreverses: false),
+                        value: pulseAnimation
+                    )
+            }
+
+            // Status ring
+            Circle()
+                .stroke(callStateColor, lineWidth: 3)
+                .frame(width: Layout.avatarSize + 8, height: Layout.avatarSize + 8)
+
+            // Avatar background
+            Circle()
+                .fill(avatarGradient)
+                .frame(width: Layout.avatarSize, height: Layout.avatarSize)
+
+            // Initials
+            Text(remotePartyInitials)
+                .font(.system(size: 44, weight: .medium, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .onAppear {
+            pulseAnimation = true
+        }
+    }
+
+    private var avatarGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.accentColor,
+                Color.accentColor.opacity(0.8)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var shouldShowPulse: Bool {
+        switch viewModel.callState {
+        case .outgoing, .early, .incoming:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var callStatusView: some View {
+        HStack(spacing: 6) {
+            // Status indicator dot
             Circle()
                 .fill(callStateColor)
                 .frame(width: 8, height: 8)
 
-            Text(callStateText)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
+            // Status text or duration
+            Group {
+                if isEstablishedOrHeld {
+                    Text(viewModel.callDurationFormatted)
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                } else {
+                    Text(callStateText)
+                        .font(.system(size: 15, weight: .medium))
+                }
+            }
+            .foregroundColor(.secondary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
     }
+
+    private var isEstablishedOrHeld: Bool {
+        viewModel.callState == .established || viewModel.callState == .held
+    }
+
+    // MARK: - Call State Properties
 
     private var callStateColor: Color {
         switch viewModel.callState {
         case .outgoing, .early:
             return .orange
         case .incoming:
-            return .blue
+            return .green
         case .established:
             return .green
         case .held:
             return .yellow
         case .idle, .ended:
-            return .gray
+            return .secondary
         }
     }
 
@@ -131,12 +227,11 @@ struct ActiveCallView: View {
         if components.count >= 2 {
             return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
         }
-        // For phone numbers or single words, take first 2 chars
         let filtered = name.filter { $0.isLetter || $0.isNumber }
         return String(filtered.prefix(2)).uppercased()
     }
 
-    // MARK: - Call Controls
+    // MARK: - Call Controls Section
 
     private var isIncomingCall: Bool {
         if case .incoming = viewModel.callState {
@@ -145,193 +240,272 @@ struct ActiveCallView: View {
         return false
     }
 
-    private var callControls: some View {
-        VStack(spacing: 16) {
+    private var callControlsSection: some View {
+        VStack(spacing: 24) {
             if isIncomingCall {
-                // Incoming call: Answer and Decline buttons
                 incomingCallControls
             } else {
-                // Active call: Mute, Keypad, Hold buttons
                 activeCallControls
             }
         }
+        .padding(.horizontal, 32)
     }
 
+    // MARK: - Incoming Call Controls
+
     private var incomingCallControls: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: Layout.buttonSpacing * 2) {
             // Decline button
-            Button(action: {
-                viewModel.hangupCall()
-            }) {
-                HStack {
-                    Image(systemName: "phone.down.fill")
-                        .font(.system(size: 20))
-                    Text("Decline")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.red)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-            }
-            .buttonStyle(.plain)
+            CallActionButton(
+                icon: "phone.down.fill",
+                backgroundColor: .red,
+                size: Layout.endCallButtonSize,
+                action: { viewModel.hangupCall() }
+            )
+            .accessibilityLabel("Decline call")
 
             // Answer button
-            Button(action: {
-                viewModel.answerCall()
-            }) {
-                HStack {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 20))
-                    Text("Answer")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-            }
-            .buttonStyle(.plain)
+            CallActionButton(
+                icon: "phone.fill",
+                backgroundColor: .green,
+                size: Layout.endCallButtonSize,
+                action: { viewModel.answerCall() }
+            )
+            .accessibilityLabel("Answer call")
         }
     }
 
+    // MARK: - Active Call Controls
+
     private var activeCallControls: some View {
-        VStack(spacing: 16) {
-            // Top row: Mute, Keypad, Hold
-            HStack(spacing: 24) {
-                // Mute button
+        VStack(spacing: 24) {
+            // Control buttons row
+            HStack(spacing: Layout.buttonSpacing) {
+                // Mute
                 CallControlButton(
                     icon: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
-                    label: viewModel.isMuted ? "Unmute" : "Mute",
+                    label: "Mute",
                     isActive: viewModel.isMuted,
-                    action: {
-                        viewModel.toggleMute()
-                    }
+                    action: { viewModel.toggleMute() }
                 )
 
-                // Keypad button
+                // Keypad
                 CallControlButton(
                     icon: "circle.grid.3x3.fill",
                     label: "Keypad",
                     isActive: showDTMFKeypad,
-                    action: {
-                        showDTMFKeypad.toggle()
-                    }
+                    action: { showDTMFKeypad.toggle() }
                 )
 
-                // Hold button
+                // Hold
                 CallControlButton(
                     icon: viewModel.isOnHold ? "play.fill" : "pause.fill",
                     label: viewModel.isOnHold ? "Resume" : "Hold",
                     isActive: viewModel.isOnHold,
-                    action: {
-                        viewModel.toggleHold()
-                    }
+                    action: { viewModel.toggleHold() }
                 )
             }
 
-            // Hangup button
-            Button(action: {
-                viewModel.hangupCall()
-            }) {
-                HStack {
-                    Image(systemName: "phone.down.fill")
-                        .font(.system(size: 20))
-                    Text("End Call")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.red)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-            }
-            .buttonStyle(.plain)
+            // End call button
+            CallActionButton(
+                icon: "phone.down.fill",
+                backgroundColor: .red,
+                size: Layout.endCallButtonSize,
+                action: { viewModel.hangupCall() }
+            )
+            .accessibilityLabel("End call")
         }
     }
 }
 
 // MARK: - Call Control Button
 
-/// Circular button for call controls (mute, hold, keypad).
+/// Circular control button with label (Mute, Hold, Keypad).
 private struct CallControlButton: View {
     let icon: String
     let label: String
     let isActive: Bool
     let action: () -> Void
 
+    @State private var isPressed = false
+
+    private let size: CGFloat = 64
+
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 ZStack {
+                    // Background circle
                     Circle()
-                        .fill(isActive ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
-                        .frame(width: 56, height: 56)
+                        .fill(backgroundStyle)
+                        .frame(width: size, height: size)
 
+                    // Icon
                     Image(systemName: icon)
-                        .font(.system(size: 22))
-                        .foregroundColor(isActive ? .white : .primary)
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(iconColor)
                 }
+                .scaleEffect(isPressed ? 0.92 : 1.0)
+                .animation(.easeInOut(duration: 0.1), value: isPressed)
 
+                // Label
                 Text(label)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
+        .accessibilityLabel("\(label), \(isActive ? "on" : "off")")
+    }
+
+    private var backgroundStyle: some ShapeStyle {
+        if isActive {
+            return AnyShapeStyle(Color.white)
+        } else {
+            return AnyShapeStyle(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+        }
+    }
+
+    private var iconColor: Color {
+        isActive ? .accentColor : .primary
+    }
+}
+
+// MARK: - Call Action Button
+
+/// Large circular action button (Answer, Decline, End Call).
+private struct CallActionButton: View {
+    let icon: String
+    let backgroundColor: Color
+    let size: CGFloat
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(backgroundColor)
+                    .frame(width: size, height: size)
+                    .shadow(color: backgroundColor.opacity(0.4), radius: 8, y: 4)
+
+                Image(systemName: icon)
+                    .font(.system(size: size * 0.38, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: isPressed)
+        }
+        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
+    }
+}
+
+// MARK: - Pressable Button Style
+
+/// Custom button style that tracks press state for visual feedback.
+private struct PressableButtonStyle: ButtonStyle {
+    @Binding var isPressed: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { newValue in
+                isPressed = newValue
+            }
     }
 }
 
 // MARK: - DTMF Keypad
 
-/// Grid of DTMF digit buttons.
+/// Grid of DTMF digit buttons following phone keypad layout.
 struct DTMFKeypadView: View {
     let onDigitPressed: (String) -> Void
 
-    private let digits: [[String]] = [
-        ["1", "2", "3"],
-        ["4", "5", "6"],
-        ["7", "8", "9"],
-        ["*", "0", "#"]
+    private let keypadData: [[KeypadKey]] = [
+        [.init("1", letters: ""), .init("2", letters: "ABC"), .init("3", letters: "DEF")],
+        [.init("4", letters: "GHI"), .init("5", letters: "JKL"), .init("6", letters: "MNO")],
+        [.init("7", letters: "PQRS"), .init("8", letters: "TUV"), .init("9", letters: "WXYZ")],
+        [.init("*", letters: ""), .init("0", letters: "+"), .init("#", letters: "")]
     ]
 
     var body: some View {
-        VStack(spacing: 8) {
-            ForEach(digits, id: \.self) { row in
-                HStack(spacing: 8) {
-                    ForEach(row, id: \.self) { digit in
-                        DTMFButton(digit: digit, action: {
-                            onDigitPressed(digit)
+        VStack(spacing: 12) {
+            ForEach(keypadData, id: \.self) { row in
+                HStack(spacing: 16) {
+                    ForEach(row) { key in
+                        DTMFKeyButton(key: key, action: {
+                            onDigitPressed(key.digit)
                         })
                     }
                 }
             }
         }
+        .padding(.horizontal, 24)
     }
 }
 
-/// Individual DTMF digit button.
-private struct DTMFButton: View {
+/// Model for a keypad key with digit and optional letters.
+private struct KeypadKey: Identifiable, Hashable {
+    let id = UUID()
     let digit: String
+    let letters: String
+
+    init(_ digit: String, letters: String) {
+        self.digit = digit
+        self.letters = letters
+    }
+}
+
+/// Individual DTMF digit button with Apple Phone app styling.
+private struct DTMFKeyButton: View {
+    let key: KeypadKey
     let action: () -> Void
+
+    @State private var isPressed = false
+
+    private let size: CGFloat = 72
 
     var body: some View {
         Button(action: action) {
-            Text(digit)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
-                .frame(width: 64, height: 48)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(8)
+            ZStack {
+                Circle()
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(isPressed ? 0.5 : 0.8))
+                    .frame(width: size, height: size)
+
+                VStack(spacing: 2) {
+                    Text(key.digit)
+                        .font(.system(size: 28, weight: .regular, design: .rounded))
+                        .foregroundStyle(.primary)
+
+                    if !key.letters.isEmpty {
+                        Text(key.letters)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .scaleEffect(isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.08), value: isPressed)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
+        .accessibilityLabel("Dial \(key.digit)")
     }
 }
 
 // MARK: - Preview
 
 #Preview("Established Call") {
-    ActiveCallView(viewModel: AppViewModel())
-        .frame(width: 350, height: 500)
+    ActiveCallView(viewModel: {
+        let vm = AppViewModel()
+        return vm
+    }())
+    .frame(width: 380, height: 580)
+}
+
+#Preview("Incoming Call") {
+    ActiveCallView(viewModel: {
+        let vm = AppViewModel()
+        return vm
+    }())
+    .frame(width: 380, height: 580)
 }
