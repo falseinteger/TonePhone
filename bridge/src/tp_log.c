@@ -150,7 +150,7 @@ static void rotate_logs(void)
  */
 static void write_log(tp_log_level_t level, const char *msg)
 {
-    if (!g_log.file || level < g_log.level)
+    if (!g_log.file || level > g_log.level)
         return;
 
     /* Get timestamp */
@@ -281,7 +281,10 @@ tp_error_t tp_log_set_level(tp_log_level_t level)
 
 tp_log_level_t tp_log_get_level(void)
 {
-    return g_log.level;
+    pthread_mutex_lock(&g_log.mutex);
+    tp_log_level_t level = g_log.level;
+    pthread_mutex_unlock(&g_log.mutex);
+    return level;
 }
 
 void tp_log_write(tp_log_level_t level, const char *fmt, ...)
