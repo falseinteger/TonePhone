@@ -351,7 +351,8 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Registers stored accounts that have passwords with TonePhoneCore.
-    /// Called when the app starts or core is restarted.
+    /// Available for batch registration if needed (e.g., after core restart).
+    /// Note: Not called at startup; the app uses lazy registration via `startConnection`.
     /// Accounts without stored passwords are skipped.
     func registerStoredAccounts() {
         for account in accounts {

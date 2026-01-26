@@ -72,7 +72,10 @@ struct WindowConfigurator: NSViewRepresentable {
 
         // Enforce current size within bounds
         var frame = window.frame
-        let needsResize = frame.width < WindowDelegate.minSize.width || frame.height < WindowDelegate.minSize.height
+        let needsResize = frame.width < WindowDelegate.minSize.width ||
+                          frame.height < WindowDelegate.minSize.height ||
+                          frame.width > WindowDelegate.maxSize.width ||
+                          frame.height > WindowDelegate.maxSize.height
         frame.size.width = max(WindowDelegate.minSize.width, min(WindowDelegate.maxSize.width, frame.width))
         frame.size.height = max(WindowDelegate.minSize.height, min(WindowDelegate.maxSize.height, frame.height))
         if needsResize {
