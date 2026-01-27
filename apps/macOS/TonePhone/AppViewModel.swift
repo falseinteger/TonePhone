@@ -153,6 +153,12 @@ final class AppViewModel: ObservableObject {
     /// Call start time for duration calculation.
     private var callStartTime: Date?
 
+    /// Call direction for history recording.
+    private var currentCallDirection: CallDirection?
+
+    /// Whether the current call was answered (for history recording).
+    private var currentCallWasAnswered = false
+
     /// Pending cleanup work item to prevent stale timers affecting new calls.
     private var pendingCleanupWorkItem: DispatchWorkItem?
 
@@ -278,13 +284,20 @@ final class AppViewModel: ObservableObject {
             activeCallID = callID
             callState = .outgoing
             currentScreen = .activeCall
+            currentCallDirection = .outgoing
+            currentCallWasAnswered = false
+            callStartTime = Date()
 
         case .incoming(let remoteURI):
+            print("AppViewModel: Incoming call from \(remoteURI ?? "unknown")")
             activeCallID = callID
             remotePartyURI = remoteURI
             remotePartyName = parseDisplayName(from: remoteURI)
             callState = .incoming(remoteURI: remoteURI)
             currentScreen = .activeCall
+            currentCallDirection = .incoming
+            currentCallWasAnswered = false
+            callStartTime = Date()
 
             // Trigger incoming call alert (ringtone, notification, bring to front)
             IncomingCallManager.shared.handleIncomingCall(
@@ -298,6 +311,7 @@ final class AppViewModel: ObservableObject {
         case .established:
             callState = .established
             isOnHold = false
+            currentCallWasAnswered = true
             startCallDurationTimer()
             // Stop ringtone when call is answered
             IncomingCallManager.shared.handleCallEnded()
@@ -311,8 +325,44 @@ final class AppViewModel: ObservableObject {
             stopCallDurationTimer()
             // Stop ringtone and remove notification
             IncomingCallManager.shared.handleCallEnded()
+            // Save call to history
+            saveCallToHistory(reason: reason)
             scheduleCallCleanup(callID: callID, delay: 1.5)
         }
+    }
+
+    /// Saves the current call to history.
+    private func saveCallToHistory(reason: String?) {
+        guard let direction = currentCallDirection,
+              let uri = remotePartyURI else { return }
+
+        let outcome: CallOutcome
+        if currentCallWasAnswered {
+            outcome = .answered
+        } else if direction == .incoming {
+            // Incoming call that wasn't answered
+            if reason?.lowercased().contains("decline") == true ||
+               reason?.lowercased().contains("busy") == true {
+                outcome = .declined
+            } else {
+                outcome = .missed
+            }
+        } else {
+            // Outgoing call that wasn't answered
+            outcome = .failed
+        }
+
+        let record = CallRecord(
+            direction: direction,
+            outcome: outcome,
+            remoteURI: uri,
+            remoteName: remotePartyName,
+            startTime: callStartTime ?? Date(),
+            duration: currentCallWasAnswered ? callDuration : nil
+        )
+
+        CallHistoryStore.shared.addRecord(record)
+        print("AppViewModel: Saved call to history - \(direction) \(outcome) \(uri)")
     }
 
     /// Clears all call-related state.
@@ -324,6 +374,8 @@ final class AppViewModel: ObservableObject {
         isOnHold = false
         callDuration = 0
         callStartTime = nil
+        currentCallDirection = nil
+        currentCallWasAnswered = false
         stopCallDurationTimer()
         cancelPendingCleanup()
     }
