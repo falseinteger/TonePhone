@@ -81,6 +81,9 @@ typedef struct {
     const char *auth_user;        /**< Auth username (optional, defaults to URI user) */
     const char *outbound_proxy;   /**< Outbound proxy (optional, may be NULL) */
     const char *transport;        /**< Transport: "udp", "tcp", "tls" (optional) */
+    const char *stun_server;      /**< STUN server (optional, e.g., "stun:stun.l.google.com:19302") */
+    const char *medianat;         /**< NAT traversal method (optional, e.g., "ice", "stun") */
+    bool nat_pinhole;             /**< Enable NAT pinhole keep-alive (recommended for NAT) */
     bool register_on_add;         /**< Register immediately after adding */
 } tp_account_config_t;
 

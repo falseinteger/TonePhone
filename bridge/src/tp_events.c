@@ -267,6 +267,9 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 {
     (void)arg;
 
+    /* Log ALL events for debugging */
+    info("tp_events: === RECEIVED BARESIP EVENT: %d ===\n", ev);
+
     /* Route events to appropriate handlers based on type */
     switch (ev) {
     /* Account/Registration events */
