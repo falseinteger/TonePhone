@@ -780,4 +780,17 @@ final class AppViewModel: ObservableObject {
             print("AppViewModel: Failed to send DTMF: \(error)")
         }
     }
+
+    // MARK: - Navigation
+
+    /// Goes back to the calls list from the active call view.
+    func goBackToCallsList() {
+        currentScreen = .activeAccount
+    }
+
+    /// Shows the active call detail view.
+    func showActiveCall() {
+        guard activeCallID != nil else { return }
+        currentScreen = .activeCall
+    }
 }
