@@ -170,8 +170,23 @@ final class AppViewModel: ObservableObject {
         subscribeToEvents()
         startCore()
         loadAccounts()
+        setupIncomingCallManager()
         autoConnectIfNeeded()
         showAddAccountIfEmpty()
+    }
+
+    /// Sets up the incoming call manager callbacks.
+    private func setupIncomingCallManager() {
+        let callManager = IncomingCallManager.shared
+        callManager.requestNotificationPermission()
+
+        callManager.onAnswer = { [weak self] in
+            self?.answerCall()
+        }
+
+        callManager.onDecline = { [weak self] in
+            self?.hangupCall()
+        }
     }
 
     /// Shows the add account sheet if no accounts exist.
@@ -255,6 +270,8 @@ final class AppViewModel: ObservableObject {
         switch state {
         case .idle:
             callState = .idle
+            // Ensure ringtone and notification are stopped
+            IncomingCallManager.shared.handleCallEnded()
             clearCallState()
 
         case .outgoing:
@@ -269,6 +286,12 @@ final class AppViewModel: ObservableObject {
             callState = .incoming(remoteURI: remoteURI)
             currentScreen = .activeCall
 
+            // Trigger incoming call alert (ringtone, notification, bring to front)
+            IncomingCallManager.shared.handleIncomingCall(
+                callerName: remotePartyName,
+                callerURI: remoteURI
+            )
+
         case .early:
             callState = .early
 
@@ -276,6 +299,8 @@ final class AppViewModel: ObservableObject {
             callState = .established
             isOnHold = false
             startCallDurationTimer()
+            // Stop ringtone when call is answered
+            IncomingCallManager.shared.handleCallEnded()
 
         case .held:
             callState = .held
@@ -284,6 +309,8 @@ final class AppViewModel: ObservableObject {
         case .ended(let reason):
             callState = .ended(reason: reason)
             stopCallDurationTimer()
+            // Stop ringtone and remove notification
+            IncomingCallManager.shared.handleCallEnded()
             scheduleCallCleanup(callID: callID, delay: 1.5)
         }
     }
@@ -752,5 +779,18 @@ final class AppViewModel: ObservableObject {
         } catch {
             print("AppViewModel: Failed to send DTMF: \(error)")
         }
+    }
+
+    // MARK: - Navigation
+
+    /// Goes back to the calls list from the active call view.
+    func goBackToCallsList() {
+        currentScreen = .activeAccount
+    }
+
+    /// Shows the active call detail view.
+    func showActiveCall() {
+        guard activeCallID != nil else { return }
+        currentScreen = .activeCall
     }
 }

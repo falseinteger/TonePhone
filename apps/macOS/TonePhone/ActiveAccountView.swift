@@ -9,27 +9,30 @@ import SwiftUI
 
 /// Screen displayed when connected to a SIP account.
 ///
-/// Shows the dialpad for making calls along with account status.
+/// Shows the list of active calls with a button to open the dialpad.
 /// Follows macOS Human Interface Guidelines for professional appearance.
 struct ActiveAccountView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var isDialpadPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
             // Account header bar
             accountHeader
 
-            // Dialpad
-            DialpadView { uri in
-                let formatted = formatURI(uri)
-                guard !formatted.isEmpty else { return }
-                viewModel.makeCall(to: formatted)
-            }
+            // Active calls list
+            ActiveCallsListView(viewModel: viewModel)
+
+            // Dialpad button bar
+            dialpadButtonBar
 
             // Status bar
             statusBar
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $isDialpadPresented) {
+            dialpadSheet
+        }
     }
 
     // MARK: - Account Header
@@ -79,6 +82,66 @@ struct ActiveAccountView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accountAccessibilityLabel)
+    }
+
+    // MARK: - Dialpad Button Bar
+
+    private var dialpadButtonBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            Button {
+                isDialpadPresented = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "circle.grid.3x3.fill")
+                        .font(.system(size: 16))
+                    Text("Dialpad")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .contentShape(Rectangle())
+        }
+    }
+
+    // MARK: - Dialpad Sheet
+
+    private var dialpadSheet: some View {
+        VStack(spacing: 0) {
+            // Sheet header
+            HStack {
+                Text("Dialpad")
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer()
+
+                Button {
+                    isDialpadPresented = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            // Dialpad
+            DialpadView { uri in
+                let formatted = formatURI(uri)
+                guard !formatted.isEmpty else { return }
+                viewModel.makeCall(to: formatted)
+                isDialpadPresented = false
+            }
+        }
+        .frame(width: 300, height: 420)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Status Bar
