@@ -166,6 +166,9 @@ struct ActiveCallsListView: View {
             ForEach(activeCalls) { call in
                 ActiveCallRow(
                     call: call,
+                    onTap: {
+                        viewModel.showActiveCall()
+                    },
                     onAnswer: {
                         viewModel.answerCall()
                     },
@@ -189,6 +192,7 @@ struct ActiveCallsListView: View {
 
 private struct ActiveCallRow: View {
     let call: ActiveCallItem
+    let onTap: () -> Void
     let onAnswer: () -> Void
     let onHangup: () -> Void
     let onToggleHold: () -> Void
@@ -292,6 +296,9 @@ private struct ActiveCallRow: View {
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
+        }
     }
 
     private var stateIcon: some View {
