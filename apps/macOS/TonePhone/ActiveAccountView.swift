@@ -7,38 +7,23 @@
 
 import SwiftUI
 
-/// The active tab in the main view.
-enum ActiveTab: String, CaseIterable {
-    case dialpad = "Dialpad"
-    case history = "Recent"
-}
-
 /// Screen displayed when connected to a SIP account.
 ///
 /// Shows the dialpad for making calls along with account status.
 /// Follows macOS Human Interface Guidelines for professional appearance.
 struct ActiveAccountView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var activeTab: ActiveTab = .dialpad
 
     var body: some View {
         VStack(spacing: 0) {
             // Account header bar
             accountHeader
 
-            // Tab bar
-            tabBar
-
-            // Content based on active tab
-            switch activeTab {
-            case .dialpad:
-                DialpadView { uri in
-                    let formatted = formatURI(uri)
-                    guard !formatted.isEmpty else { return }
-                    viewModel.makeCall(to: formatted)
-                }
-            case .history:
-                CallHistoryView(viewModel: viewModel)
+            // Dialpad
+            DialpadView { uri in
+                let formatted = formatURI(uri)
+                guard !formatted.isEmpty else { return }
+                viewModel.makeCall(to: formatted)
             }
 
             // Status bar
@@ -94,34 +79,6 @@ struct ActiveAccountView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accountAccessibilityLabel)
-    }
-
-    // MARK: - Tab Bar
-
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(ActiveTab.allCases, id: \.self) { tab in
-                Button {
-                    activeTab = tab
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: tab == .dialpad ? "circle.grid.3x3.fill" : "clock.fill")
-                            .font(.system(size: 11))
-                        Text(tab.rawValue)
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(activeTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
-                    .foregroundColor(activeTab == tab ? .accentColor : .secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
     }
 
     // MARK: - Status Bar
