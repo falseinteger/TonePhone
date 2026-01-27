@@ -20,6 +20,9 @@ struct ActiveCallView: View {
             let isCompact = geometry.size.width < compactThreshold
 
             VStack(spacing: 0) {
+                // Header with back button
+                callHeader
+
                 // Content
                 contentArea
 
@@ -31,6 +34,33 @@ struct ActiveCallView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // MARK: - Call Header
+
+    private var callHeader: some View {
+        HStack {
+            Button {
+                viewModel.goBackToCallsList()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Calls")
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(.accentColor)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     // MARK: - Content Area
