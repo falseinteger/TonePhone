@@ -267,8 +267,6 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 {
     (void)arg;
 
-    info("tp_events: received baresip event %d\n", ev);
-
     /* Route events to appropriate handlers based on type */
     switch (ev) {
     /* Account/Registration events */
@@ -283,9 +281,6 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 
     /* Call state events */
     case BEVENT_CALL_INCOMING:
-        info("tp_events: *** INCOMING CALL EVENT ***\n");
-        handle_call_event(ev, event);
-        break;
     case BEVENT_CALL_OUTGOING:
     case BEVENT_CALL_RINGING:
     case BEVENT_CALL_PROGRESS:

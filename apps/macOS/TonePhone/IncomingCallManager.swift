@@ -98,7 +98,6 @@ final class IncomingCallManager: NSObject, ObservableObject {
     ///   - callerURI: SIP URI of the caller
     func handleIncomingCall(callerName: String?, callerURI: String?) {
         let displayName = callerName ?? callerURI ?? "Unknown Caller"
-        print("IncomingCallManager: handleIncomingCall from \(displayName)")
 
         // Start ringtone
         startRingtone()
@@ -121,16 +120,10 @@ final class IncomingCallManager: NSObject, ObservableObject {
     // MARK: - Ringtone
 
     private func startRingtone() {
-        guard !isRinging else {
-            print("IncomingCallManager: Already ringing, skipping startRingtone")
-            return
-        }
-
-        print("IncomingCallManager: Starting ringtone...")
+        guard !isRinging else { return }
 
         // Try to load system ringtone or bundled sound
         if let soundURL = findRingtoneURL() {
-            print("IncomingCallManager: Found ringtone at \(soundURL)")
             do {
                 audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
                 audioPlayer?.numberOfLoops = -1 // Loop indefinitely
