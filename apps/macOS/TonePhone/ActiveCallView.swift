@@ -11,6 +11,7 @@ import SwiftUI
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showDTMFKeypad = false
+    @State private var showAudioDevicePicker = false
     @State private var dtmfHistory = ""
 
     private let compactThreshold: CGFloat = 280
@@ -219,6 +220,24 @@ struct ActiveCallView: View {
                     dtmfHistory.append(digit)
                     viewModel.sendDTMF(digit)
                 }
+            }
+
+            // Audio device picker
+            ToolbarToggle(
+                isOn: showAudioDevicePicker,
+                icon: "speaker.wave.2.fill",
+                action: {
+                    viewModel.refreshAudioDevices()
+                    showAudioDevicePicker.toggle()
+                }
+            )
+            .keyboardShortcut("a", modifiers: .command)
+            .help("Audio Devices (⌘A)")
+            .popover(isPresented: $showAudioDevicePicker, arrowEdge: .top) {
+                AudioDevicePickerView(
+                    viewModel: viewModel,
+                    isPresented: $showAudioDevicePicker
+                )
             }
 
             Spacer()

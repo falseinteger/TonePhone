@@ -308,6 +308,14 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         return tp_err;
     }
 
+    /* Initialize audio device subsystem */
+    tp_err = tp_audio_init();
+    if (tp_err != TP_OK) {
+        warning("tp_core: tp_audio_init failed: %s (%d)\n",
+                tp_error_string(tp_err), tp_err);
+        /* Not fatal - continue without audio device management */
+    }
+
     pthread_mutex_lock(&g_mutex);
     g_bridge.state = STATE_INITIALIZED;
     g_bridge.thread_started = false;
@@ -449,6 +457,10 @@ void tp_shutdown(void)
     }
 
     info("tp_core: ===== Shutdown Sequence =====\n");
+
+    /* Close audio device subsystem */
+    info("tp_core: closing audio device subsystem...\n");
+    tp_audio_close();
 
     /* Unregister event handler first (reverse order of init) */
     info("tp_core: closing event handler...\n");

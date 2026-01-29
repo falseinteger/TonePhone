@@ -225,6 +225,39 @@ public enum LogLevel: Int, Sendable, CaseIterable {
     }
 }
 
+// MARK: - Audio Device Types
+
+/// Type of audio device.
+public enum AudioDeviceType: Sendable {
+    case input   /// Microphone
+    case output  /// Speaker
+}
+
+/// Represents an audio device (microphone or speaker).
+public struct AudioDevice: Identifiable, Hashable, Sendable {
+    /// Unique identifier for the device.
+    public let id: String
+
+    /// Human-readable device name.
+    public let name: String
+
+    /// Device type (input/output).
+    public let type: AudioDeviceType
+
+    /// Whether this is the system default device.
+    public let isDefault: Bool
+
+    /// Sentinel for "System Default" selection.
+    public static func systemDefault(type: AudioDeviceType) -> AudioDevice {
+        AudioDevice(
+            id: "",
+            name: "System Default",
+            type: type,
+            isDefault: false
+        )
+    }
+}
+
 // MARK: - ID Types
 
 /// Opaque account identifier.
@@ -267,6 +300,7 @@ public enum TonePhoneEvent: Sendable {
     case accountStateChanged(AccountID, AccountState)
     case callStateChanged(CallID, CallState)
     case mediaChanged(CallID, audioEstablished: Bool, videoEstablished: Bool, encrypted: Bool)
+    case audioDeviceChanged
 }
 
 // MARK: - TonePhoneCore
@@ -800,6 +834,130 @@ public final class TonePhoneCore {
         }
     }
 
+    // MARK: - Audio Device Management
+
+    /// Get list of available input devices (microphones).
+    ///
+    /// - Returns: Array of input devices, with system default devices marked.
+    public func getInputDevices() -> [AudioDevice] {
+        var list = tp_audio_device_list_t()
+        let result = tp_audio_get_input_devices(&list)
+
+        guard result == TP_OK else {
+            return []
+        }
+
+        defer { tp_audio_device_list_free(&list) }
+
+        var devices: [AudioDevice] = []
+        for i in 0..<Int(list.count) {
+            let dev = list.devices[i]
+            let name = withUnsafePointer(to: dev.name) { ptr in
+                ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+            }
+            let uid = withUnsafePointer(to: dev.uid) { ptr in
+                ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+            }
+            devices.append(AudioDevice(
+                id: uid,
+                name: name,
+                type: .input,
+                isDefault: dev.is_default
+            ))
+        }
+
+        return devices
+    }
+
+    /// Get list of available output devices (speakers).
+    ///
+    /// - Returns: Array of output devices, with system default devices marked.
+    public func getOutputDevices() -> [AudioDevice] {
+        var list = tp_audio_device_list_t()
+        let result = tp_audio_get_output_devices(&list)
+
+        guard result == TP_OK else {
+            return []
+        }
+
+        defer { tp_audio_device_list_free(&list) }
+
+        var devices: [AudioDevice] = []
+        for i in 0..<Int(list.count) {
+            let dev = list.devices[i]
+            let name = withUnsafePointer(to: dev.name) { ptr in
+                ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+            }
+            let uid = withUnsafePointer(to: dev.uid) { ptr in
+                ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+            }
+            devices.append(AudioDevice(
+                id: uid,
+                name: name,
+                type: .output,
+                isDefault: dev.is_default
+            ))
+        }
+
+        return devices
+    }
+
+    /// Get the currently selected input device name.
+    ///
+    /// - Returns: The device name, or nil if using system default.
+    public func getCurrentInputDevice() -> String? {
+        var buffer = [CChar](repeating: 0, count: 128)
+        let result = tp_audio_get_current_input(&buffer, buffer.count)
+        guard result == TP_OK else { return nil }
+        let name = String(cString: buffer)
+        return name.isEmpty ? nil : name
+    }
+
+    /// Get the currently selected output device name.
+    ///
+    /// - Returns: The device name, or nil if using system default.
+    public func getCurrentOutputDevice() -> String? {
+        var buffer = [CChar](repeating: 0, count: 128)
+        let result = tp_audio_get_current_output(&buffer, buffer.count)
+        guard result == TP_OK else { return nil }
+        let name = String(cString: buffer)
+        return name.isEmpty ? nil : name
+    }
+
+    /// Set the input device (microphone).
+    ///
+    /// - Parameter device: The device to use, or nil/empty name for system default.
+    /// - Throws: `TonePhoneError` if setting fails.
+    public func setInputDevice(_ device: AudioDevice?) throws {
+        let deviceName = device?.name ?? ""
+        let result: tp_error_t
+        if deviceName.isEmpty || device?.id.isEmpty == true {
+            result = tp_audio_set_input_device(nil)
+        } else {
+            result = deviceName.withCString { tp_audio_set_input_device($0) }
+        }
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
+    /// Set the output device (speaker).
+    ///
+    /// - Parameter device: The device to use, or nil/empty name for system default.
+    /// - Throws: `TonePhoneError` if setting fails.
+    public func setOutputDevice(_ device: AudioDevice?) throws {
+        let deviceName = device?.name ?? ""
+        let result: tp_error_t
+        if deviceName.isEmpty || device?.id.isEmpty == true {
+            result = tp_audio_set_output_device(nil)
+        } else {
+            result = deviceName.withCString { tp_audio_set_output_device($0) }
+        }
+        guard result == TP_OK else {
+            throw TonePhoneError(from: result)
+        }
+    }
+
     // MARK: - Event Handling
 
     private func registerEventCallback() {
@@ -850,8 +1008,11 @@ public final class TonePhoneCore {
                 encrypted: event.data.media.encrypted
             )
 
+        case TP_EVENT_AUDIO_DEVICE_CHANGED:
+            swiftEvent = .audioDeviceChanged
+
         default:
-            // Ignore unhandled event types (log, audio device)
+            // Ignore unhandled event types (log)
             return
         }
 
