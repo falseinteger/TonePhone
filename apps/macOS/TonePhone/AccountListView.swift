@@ -126,6 +126,14 @@ struct AccountListView: View {
             .buttonStyle(.borderless)
             .help("Add Account")
 
+            Button {
+                viewModel.showSettingsSheet()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
+
             Spacer()
 
             Text("\(viewModel.accounts.count) account\(viewModel.accounts.count == 1 ? "" : "s")")

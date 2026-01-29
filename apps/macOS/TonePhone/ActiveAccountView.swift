@@ -63,6 +63,17 @@ struct ActiveAccountView: View {
 
             Spacer()
 
+            // Settings button
+            Button {
+                viewModel.showSettingsSheet()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
+
             // Disconnect button
             Button {
                 viewModel.unregisterAndGoBack()

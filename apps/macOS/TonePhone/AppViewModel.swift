@@ -103,6 +103,9 @@ final class AppViewModel: ObservableObject {
     /// Whether the connection progress sheet is showing.
     @Published var isConnectionSheetPresented = false
 
+    /// Whether the settings sheet is showing.
+    @Published var isSettingsSheetPresented = false
+
     /// The account currently being connected.
     @Published private(set) var connectingAccount: SIPAccount?
 
@@ -567,6 +570,11 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Shows the settings sheet.
+    func showSettingsSheet() {
+        isSettingsSheetPresented = true
+    }
+
     /// Shows the account configuration sheet for adding a new account.
     func showAddAccountSheet() {
         selectedAccount = nil
@@ -637,6 +645,11 @@ final class AppViewModel: ObservableObject {
             }
         }
 
+        // Get settings from SettingsStore
+        let settings = SettingsStore.shared
+        let stunServer = settings.stunServer.isEmpty ? nil : settings.stunServer
+        let medianat = settings.natMethod.rawValue.isEmpty ? nil : settings.natMethod.rawValue
+
         // Add new account to core
         do {
             let bridgeID = try TonePhoneCore.shared.addAccount(
@@ -644,6 +657,9 @@ final class AppViewModel: ObservableObject {
                 password: password,
                 displayName: account.displayName.isEmpty ? nil : account.displayName,
                 transport: account.transport.rawValue,
+                stunServer: stunServer,
+                medianat: medianat,
+                natPinhole: settings.natPinhole,
                 registerImmediately: true
             )
             accountIDMapping[account.id] = bridgeID
