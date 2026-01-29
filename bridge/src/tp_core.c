@@ -108,6 +108,35 @@ static void ua_exit_handler(void *arg)
     re_cancel();
 }
 
+/* Enable verbose SIP tracing (set to 1 for detailed SIP message dumps) */
+#ifndef TP_ENABLE_SIP_TRACE
+#define TP_ENABLE_SIP_TRACE 0
+#endif
+
+#if TP_ENABLE_SIP_TRACE
+/**
+ * @brief SIP trace handler - logs all SIP messages for debugging
+ *
+ * Note: Only enabled when TP_ENABLE_SIP_TRACE is defined.
+ * SIP messages may contain sensitive information.
+ */
+static void sip_trace_handler(bool tx, enum sip_transp tp,
+                              const struct sa *src, const struct sa *dst,
+                              const uint8_t *pkt, size_t len, void *arg)
+{
+    (void)arg;
+    (void)pkt;
+
+    /* Log direction and transport - basic info only */
+    debug("tp_core: SIP %s via %s %J -> %J (len=%zu)\n",
+         tx ? ">>>" : "<<<",
+         tp == SIP_TRANSP_UDP ? "UDP" :
+         tp == SIP_TRANSP_TCP ? "TCP" :
+         tp == SIP_TRANSP_TLS ? "TLS" : "???",
+         src, dst, len);
+}
+#endif
+
 /**
  * @brief Main loop thread entry point
  */
@@ -213,6 +242,9 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
         return TP_ERR_INTERNAL;
     }
 
+    /* Enable debug-level logging for SIP troubleshooting */
+    log_level_set(LEVEL_DEBUG);
+
     /* Initialize User Agent system */
     err = ua_init(TP_SOFTWARE_NAME, true, true, true);
     if (err) {
@@ -229,6 +261,11 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
 
     /* Set exit handler */
     uag_set_exit_handler(ua_exit_handler, NULL);
+
+#if TP_ENABLE_SIP_TRACE
+    /* Enable SIP tracing for debugging (disabled by default) */
+    sip_set_trace_handler(uag_sip(), sip_trace_handler);
+#endif
 
     /* Load configured modules */
     err = conf_modules();

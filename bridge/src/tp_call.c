@@ -14,6 +14,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* Enable verbose call debugging (set to 1 for detailed SDP/call dumps) */
+#ifndef TP_VERBOSE_CALL_DEBUG
+#define TP_VERBOSE_CALL_DEBUG 0
+#endif
+
 /* =============================================================================
  * Constants
  * ============================================================================= */
@@ -153,6 +158,7 @@ tp_error_t tp_call_answer(tp_call_id_t id)
 {
     call_entry_t *entry;
     struct call *call;
+    int err;
 
     if (id == TP_INVALID_ID) {
         return TP_ERR_INVALID_ARG;
@@ -170,7 +176,24 @@ tp_error_t tp_call_answer(tp_call_id_t id)
     pthread_mutex_unlock(&g_mutex);
 
     info("tp_call: answering call %u\n", id);
-    call_answer(call, 200, VIDMODE_OFF);
+
+    /* Log audio info - warning only if missing */
+    struct audio *au = call_audio(call);
+    if (!au) {
+        warning("tp_call: NO AUDIO OBJECT!\n");
+    }
+
+    err = call_answer(call, 200, VIDMODE_OFF);
+    if (err) {
+        warning("tp_call: call_answer failed: %m\n", err);
+        return TP_ERR_CALL_FAILED;
+    }
+
+#if TP_VERBOSE_CALL_DEBUG
+    /* Verbose debug logging - disabled by default to avoid PII leaks */
+    debug("tp_call: call state after answer: %s\n", call_statename(call));
+    debug("%H\n", call_debug, call);
+#endif
 
     return TP_OK;
 }

@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import AVFoundation
 
 /// Simplified registration status for UI display.
 ///
@@ -113,10 +114,25 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Call State
 
-    /// Current call state for UI display.
+    /// Information about an active call.
+    struct CallInfo {
+        let id: CallID
+        var state: UICallState
+        var remoteURI: String?
+        var remoteName: String?
+        var isMuted: Bool = false
+        var isOnHold: Bool = false
+        var startTime: Date?
+        var isOutgoing: Bool = false
+    }
+
+    /// All active calls tracked by ID.
+    @Published private(set) var activeCalls: [CallID: CallInfo] = [:]
+
+    /// Current call state for UI display (for the selected call).
     @Published private(set) var callState: UICallState = .idle
 
-    /// Active call ID (if any).
+    /// Active call ID (the currently selected/displayed call).
     @Published private(set) var activeCallID: CallID?
 
     /// Remote party URI for the current call.
@@ -267,22 +283,40 @@ final class AppViewModel: ObservableObject {
 
     /// Handles call state changes from TonePhoneCore.
     private func handleCallStateChanged(callID: CallID, state: CallState) {
+        // Update call in activeCalls dictionary
+        var callInfo = activeCalls[callID] ?? CallInfo(id: callID, state: .idle)
+
         switch state {
         case .idle:
-            callState = .idle
+            // Remove from active calls
+            activeCalls.removeValue(forKey: callID)
             // Ensure ringtone and notification are stopped
             IncomingCallManager.shared.handleCallEnded()
-            clearCallState()
+            // If this was the displayed call, switch to another or clear
+            if activeCallID == callID {
+                switchToNextCallOrClear()
+            }
 
         case .outgoing:
+            callInfo.state = .outgoing
+            callInfo.isOutgoing = true
+            activeCalls[callID] = callInfo
+            // Make this the displayed call
             activeCallID = callID
+            remotePartyURI = callInfo.remoteURI
+            remotePartyName = callInfo.remoteName
             callState = .outgoing
             currentScreen = .activeCall
 
         case .incoming(let remoteURI):
+            callInfo.state = .incoming(remoteURI: remoteURI)
+            callInfo.remoteURI = remoteURI
+            callInfo.remoteName = parseDisplayName(from: remoteURI)
+            activeCalls[callID] = callInfo
+            // Make this the displayed call
             activeCallID = callID
             remotePartyURI = remoteURI
-            remotePartyName = parseDisplayName(from: remoteURI)
+            remotePartyName = callInfo.remoteName
             callState = .incoming(remoteURI: remoteURI)
             currentScreen = .activeCall
 
@@ -293,25 +327,77 @@ final class AppViewModel: ObservableObject {
             )
 
         case .early:
-            callState = .early
+            callInfo.state = .early
+            activeCalls[callID] = callInfo
+            if activeCallID == callID {
+                callState = .early
+            }
 
         case .established:
-            callState = .established
-            isOnHold = false
-            startCallDurationTimer()
+            callInfo.state = .established
+            callInfo.isOnHold = false
+            callInfo.startTime = Date()
+            activeCalls[callID] = callInfo
+            if activeCallID == callID {
+                callState = .established
+                isOnHold = false
+                startCallDurationTimer()
+            }
             // Stop ringtone when call is answered
             IncomingCallManager.shared.handleCallEnded()
 
         case .held:
-            callState = .held
-            isOnHold = true
+            callInfo.state = .held
+            callInfo.isOnHold = true
+            activeCalls[callID] = callInfo
+            if activeCallID == callID {
+                callState = .held
+                isOnHold = true
+            }
 
         case .ended(let reason):
-            callState = .ended(reason: reason)
-            stopCallDurationTimer()
+            callInfo.state = .ended(reason: reason)
+            activeCalls[callID] = callInfo
             // Stop ringtone and remove notification
             IncomingCallManager.shared.handleCallEnded()
+            if activeCallID == callID {
+                callState = .ended(reason: reason)
+                stopCallDurationTimer()
+            }
             scheduleCallCleanup(callID: callID, delay: 1.5)
+        }
+    }
+
+    /// Switches to the next available call or clears call state if none.
+    private func switchToNextCallOrClear() {
+        // Find another call to display (prefer established, then held, then any)
+        let nextCall = activeCalls.values.first { call in
+            if case .established = call.state { return true }
+            return false
+        } ?? activeCalls.values.first { call in
+            if case .held = call.state { return true }
+            return false
+        } ?? activeCalls.values.first { call in
+            if case .incoming = call.state { return true }
+            return false
+        }
+
+        if let nextCall = nextCall {
+            // Switch to this call
+            activeCallID = nextCall.id
+            remotePartyURI = nextCall.remoteURI
+            remotePartyName = nextCall.remoteName
+            callState = nextCall.state
+            isMuted = nextCall.isMuted
+            isOnHold = nextCall.isOnHold
+        } else {
+            // No more calls, clear state
+            clearCallState()
+            if activeAccount != nil {
+                currentScreen = .activeAccount
+            } else {
+                currentScreen = .accountList
+            }
         }
     }
 
@@ -324,31 +410,35 @@ final class AppViewModel: ObservableObject {
         isOnHold = false
         callDuration = 0
         callStartTime = nil
+        callState = .idle
         stopCallDurationTimer()
         cancelPendingCleanup()
     }
 
-    /// Schedules cleanup after call ends, canceling any existing pending cleanup.
+    /// Schedules cleanup after call ends.
     /// - Parameters:
-    ///   - callID: The call ID that ended (used to verify cleanup targets correct call)
+    ///   - callID: The call ID that ended
     ///   - delay: Delay before cleanup runs
     private func scheduleCallCleanup(callID: CallID, delay: TimeInterval = 1.0) {
-        // Cancel any existing pending cleanup
+        // Cancel any existing cleanup first
         cancelPendingCleanup()
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            // Only cleanup if the call ID hasn't changed (no new call started)
-            guard self.activeCallID == callID else { return }
 
-            self.clearCallState()
-            if self.activeAccount != nil {
-                self.currentScreen = .activeAccount
-            } else {
-                self.currentScreen = .accountList
+            // Clear the reference to avoid stale state
+            self.pendingCleanupWorkItem = nil
+
+            // Remove the ended call from tracking
+            self.activeCalls.removeValue(forKey: callID)
+
+            // If this was the displayed call, switch to another or clear
+            if self.activeCallID == callID {
+                self.switchToNextCallOrClear()
             }
         }
 
+        // Store reference so it can be cancelled
         pendingCleanupWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
@@ -677,23 +767,110 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Call Control
 
+    /// Puts all active (non-held, established) calls on hold.
+    /// Call this before making or answering a new call.
+    private func holdAllActiveCalls() {
+        print("AppViewModel: holdAllActiveCalls called, activeCalls count: \(activeCalls.count)")
+        // Iterate over a snapshot to avoid mutating while iterating
+        let callsSnapshot = activeCalls
+        for (callID, callInfo) in callsSnapshot {
+            print("AppViewModel: Checking call \(callID), state: \(callInfo.state), isOnHold: \(callInfo.isOnHold)")
+            // Only hold calls that are established and not already on hold
+            if case .established = callInfo.state, !callInfo.isOnHold {
+                do {
+                    try TonePhoneCore.shared.holdCall(callID, hold: true)
+                    var updatedInfo = callInfo
+                    updatedInfo.isOnHold = true
+                    updatedInfo.state = .held
+                    activeCalls[callID] = updatedInfo
+                    print("AppViewModel: Put call \(callID) on hold")
+                } catch {
+                    print("AppViewModel: Failed to hold call \(callID): \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - Microphone Permission
+
+    /// Checks if microphone access is authorized.
+    private func checkMicrophonePermission() -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .notDetermined, .denied, .restricted:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Requests microphone permission and calls completion with result.
+    private func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        case .denied, .restricted:
+            completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
+    /// Shows an error message about microphone permission.
+    private func showMicrophonePermissionError() {
+        errorMessage = "Microphone access is required for calls. Please enable it in System Settings > Privacy & Security > Microphone."
+    }
+
     /// Makes an outgoing call to the specified URI.
     /// - Parameter uri: The SIP URI to call.
     func makeCall(to uri: String) {
-        // Cancel any pending cleanup from a previous call
-        cancelPendingCleanup()
+        // Check microphone permission first
+        requestMicrophonePermission { [weak self] granted in
+            guard let self = self else { return }
 
-        do {
-            let callID = try TonePhoneCore.shared.makeCall(to: uri)
-            activeCallID = callID
-            remotePartyURI = uri
-            remotePartyName = parseDisplayName(from: uri)
-            // Immediately show outgoing call UI
-            callState = .outgoing
-            currentScreen = .activeCall
-        } catch {
-            errorMessage = "Failed to start call: \(error.localizedDescription)"
-            print("AppViewModel: Failed to make call: \(error)")
+            if !granted {
+                self.showMicrophonePermissionError()
+                return
+            }
+
+            // Cancel any pending cleanup from a previous call
+            self.cancelPendingCleanup()
+
+            // Put any active calls on hold first
+            self.holdAllActiveCalls()
+
+            do {
+                let callID = try TonePhoneCore.shared.makeCall(to: uri)
+
+                // Track the new call
+                let callInfo = CallInfo(
+                    id: callID,
+                    state: .outgoing,
+                    remoteURI: uri,
+                    remoteName: self.parseDisplayName(from: uri),
+                    isOutgoing: true
+                )
+                self.activeCalls[callID] = callInfo
+
+                // Make this the active/displayed call
+                self.activeCallID = callID
+                self.remotePartyURI = uri
+                self.remotePartyName = callInfo.remoteName
+                self.callState = .outgoing
+                self.isMuted = false
+                self.isOnHold = false
+                self.currentScreen = .activeCall
+            } catch {
+                self.errorMessage = "Failed to start call: \(error.localizedDescription)"
+                print("AppViewModel: Failed to make call: \(error)")
+            }
         }
     }
 
@@ -704,11 +881,33 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        do {
-            try TonePhoneCore.shared.answerCall(callID)
-        } catch {
-            errorMessage = "Failed to answer call: \(error.localizedDescription)"
-            print("AppViewModel: Failed to answer call: \(error)")
+        print("AppViewModel: answerCall started for call \(callID)")
+
+        // Check microphone permission first
+        requestMicrophonePermission { [weak self] granted in
+            guard let self = self else { return }
+
+            if !granted {
+                self.showMicrophonePermissionError()
+                return
+            }
+
+            print("AppViewModel: Microphone permission granted, about to hold other calls")
+
+            // Put any active calls on hold first (only holds already-established calls)
+            self.holdAllActiveCalls()
+
+            // Stop ringtone BEFORE answering to release audio device
+            IncomingCallManager.shared.handleCallEnded()
+
+            print("AppViewModel: Now answering call \(callID)")
+            do {
+                try TonePhoneCore.shared.answerCall(callID)
+                print("AppViewModel: answerCall succeeded for call \(callID)")
+            } catch {
+                self.errorMessage = "Failed to answer call: \(error.localizedDescription)"
+                print("AppViewModel: Failed to answer call: \(error)")
+            }
         }
     }
 
@@ -721,6 +920,11 @@ final class AppViewModel: ObservableObject {
 
         do {
             try TonePhoneCore.shared.hangupCall(callID)
+            // Update the call info in dictionary
+            if var callInfo = activeCalls[callID] {
+                callInfo.state = .ended(reason: nil)
+                activeCalls[callID] = callInfo
+            }
             // Immediately show ended state and schedule cleanup
             callState = .ended(reason: nil)
             stopCallDurationTimer()
@@ -742,6 +946,11 @@ final class AppViewModel: ObservableObject {
         do {
             try TonePhoneCore.shared.muteCall(callID, mute: newMuteState)
             isMuted = newMuteState
+            // Update dictionary
+            if var callInfo = activeCalls[callID] {
+                callInfo.isMuted = newMuteState
+                activeCalls[callID] = callInfo
+            }
         } catch {
             errorMessage = "Failed to \(newMuteState ? "mute" : "unmute"): \(error.localizedDescription)"
             print("AppViewModel: Failed to toggle mute: \(error)")
@@ -755,11 +964,18 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        print("AppViewModel: toggleHold called for call \(callID), current isOnHold: \(isOnHold)")
         let newHoldState = !isOnHold
         do {
             try TonePhoneCore.shared.holdCall(callID, hold: newHoldState)
             isOnHold = newHoldState
             callState = newHoldState ? .held : .established
+            // Update dictionary
+            if var callInfo = activeCalls[callID] {
+                callInfo.isOnHold = newHoldState
+                callInfo.state = newHoldState ? .held : .established
+                activeCalls[callID] = callInfo
+            }
         } catch {
             errorMessage = "Failed to \(newHoldState ? "hold" : "resume"): \(error.localizedDescription)"
             print("AppViewModel: Failed to toggle hold: \(error)")
@@ -779,6 +995,29 @@ final class AppViewModel: ObservableObject {
         } catch {
             print("AppViewModel: Failed to send DTMF: \(error)")
         }
+    }
+
+    /// Sets the target call for actions without navigating.
+    /// - Parameter callID: The call ID to target.
+    func setTargetCall(_ callID: CallID) {
+        guard let callInfo = activeCalls[callID] else {
+            print("AppViewModel: Call \(callID) not found")
+            return
+        }
+
+        activeCallID = callID
+        remotePartyURI = callInfo.remoteURI
+        remotePartyName = callInfo.remoteName
+        callState = callInfo.state
+        isMuted = callInfo.isMuted
+        isOnHold = callInfo.isOnHold
+    }
+
+    /// Selects a call from the list and navigates to the active call view.
+    /// - Parameter callID: The call ID to select.
+    func selectCall(_ callID: CallID) {
+        setTargetCall(callID)
+        currentScreen = .activeCall
     }
 
     // MARK: - Navigation
