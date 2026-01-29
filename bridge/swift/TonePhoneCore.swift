@@ -542,7 +542,7 @@ public final class TonePhoneCore {
         displayName: String? = nil,
         transport: String? = nil,
         stunServer: String? = "stun:stun.l.google.com:19302",
-        medianat: String? = "ice",
+        medianat: String? = "stun",
         natPinhole: Bool = true,
         registerImmediately: Bool = true
     ) throws -> AccountID {

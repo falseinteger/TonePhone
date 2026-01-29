@@ -118,22 +118,38 @@ static void sip_trace_handler(bool tx, enum sip_transp tp,
     (void)arg;
 
     /* Log direction and transport */
-    info("tp_core: SIP %s via %s %J -> %J\n",
+    info("tp_core: SIP %s via %s %J -> %J (len=%zu)\n",
          tx ? ">>>" : "<<<",
          tp == SIP_TRANSP_UDP ? "UDP" :
          tp == SIP_TRANSP_TCP ? "TCP" :
          tp == SIP_TRANSP_TLS ? "TLS" : "???",
-         src, dst);
+         src, dst, len);
 
-    /* Log first line of message (method/status) */
-    if (len > 0) {
-        /* Find first line */
-        size_t line_len = 0;
-        while (line_len < len && pkt[line_len] != '\r' && pkt[line_len] != '\n') {
-            line_len++;
-        }
-        if (line_len > 0 && line_len < 200) {
-            info("tp_core: SIP %.*s\n", (int)line_len, pkt);
+    /* For outgoing messages with SDP, log the full message */
+    if (tx && len > 100) {
+        /* Check if this looks like a 200 OK with SDP */
+        if (len >= 12 && pkt[0] == 'S' && pkt[1] == 'I' && pkt[2] == 'P') {
+            /* Find Content-Type: application/sdp */
+            bool has_sdp = false;
+            for (size_t i = 0; i + 20 < len; i++) {
+                if (pkt[i] == 'a' && pkt[i+1] == 'p' && pkt[i+2] == 'p' &&
+                    pkt[i+3] == 'l' && pkt[i+4] == 'i') {
+                    has_sdp = true;
+                    break;
+                }
+            }
+            if (has_sdp) {
+                info("tp_core: === FULL SIP MESSAGE WITH SDP ===\n");
+                /* Print in chunks to avoid buffer issues */
+                size_t printed = 0;
+                while (printed < len) {
+                    size_t chunk = len - printed;
+                    if (chunk > 500) chunk = 500;
+                    info("%.*s", (int)chunk, pkt + printed);
+                    printed += chunk;
+                }
+                info("\n=== END SIP MESSAGE ===\n");
+            }
         }
     }
 }

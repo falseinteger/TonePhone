@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import AVFoundation
 
 /// Simplified registration status for UI display.
 ///
@@ -761,7 +762,9 @@ final class AppViewModel: ObservableObject {
     /// Puts all active (non-held, established) calls on hold.
     /// Call this before making or answering a new call.
     private func holdAllActiveCalls() {
+        print("AppViewModel: holdAllActiveCalls called, activeCalls count: \(activeCalls.count)")
         for (callID, callInfo) in activeCalls {
+            print("AppViewModel: Checking call \(callID), state: \(callInfo.state), isOnHold: \(callInfo.isOnHold)")
             // Only hold calls that are established and not already on hold
             if case .established = callInfo.state, !callInfo.isOnHold {
                 do {
@@ -778,39 +781,86 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Microphone Permission
+
+    /// Checks if microphone access is authorized.
+    private func checkMicrophonePermission() -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .notDetermined, .denied, .restricted:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Requests microphone permission and calls completion with result.
+    private func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        case .denied, .restricted:
+            completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
+    /// Shows an error message about microphone permission.
+    private func showMicrophonePermissionError() {
+        errorMessage = "Microphone access is required for calls. Please enable it in System Settings > Privacy & Security > Microphone."
+    }
+
     /// Makes an outgoing call to the specified URI.
     /// - Parameter uri: The SIP URI to call.
     func makeCall(to uri: String) {
-        // Cancel any pending cleanup from a previous call
-        cancelPendingCleanup()
+        // Check microphone permission first
+        requestMicrophonePermission { [weak self] granted in
+            guard let self = self else { return }
 
-        // Put any active calls on hold first
-        holdAllActiveCalls()
+            if !granted {
+                self.showMicrophonePermissionError()
+                return
+            }
 
-        do {
-            let callID = try TonePhoneCore.shared.makeCall(to: uri)
+            // Cancel any pending cleanup from a previous call
+            self.cancelPendingCleanup()
 
-            // Track the new call
-            let callInfo = CallInfo(
-                id: callID,
-                state: .outgoing,
-                remoteURI: uri,
-                remoteName: parseDisplayName(from: uri),
-                isOutgoing: true
-            )
-            activeCalls[callID] = callInfo
+            // Put any active calls on hold first
+            self.holdAllActiveCalls()
 
-            // Make this the active/displayed call
-            activeCallID = callID
-            remotePartyURI = uri
-            remotePartyName = callInfo.remoteName
-            callState = .outgoing
-            isMuted = false
-            isOnHold = false
-            currentScreen = .activeCall
-        } catch {
-            errorMessage = "Failed to start call: \(error.localizedDescription)"
-            print("AppViewModel: Failed to make call: \(error)")
+            do {
+                let callID = try TonePhoneCore.shared.makeCall(to: uri)
+
+                // Track the new call
+                let callInfo = CallInfo(
+                    id: callID,
+                    state: .outgoing,
+                    remoteURI: uri,
+                    remoteName: self.parseDisplayName(from: uri),
+                    isOutgoing: true
+                )
+                self.activeCalls[callID] = callInfo
+
+                // Make this the active/displayed call
+                self.activeCallID = callID
+                self.remotePartyURI = uri
+                self.remotePartyName = callInfo.remoteName
+                self.callState = .outgoing
+                self.isMuted = false
+                self.isOnHold = false
+                self.currentScreen = .activeCall
+            } catch {
+                self.errorMessage = "Failed to start call: \(error.localizedDescription)"
+                print("AppViewModel: Failed to make call: \(error)")
+            }
         }
     }
 
@@ -821,14 +871,33 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        // Put any active calls on hold first
-        holdAllActiveCalls()
+        print("AppViewModel: answerCall started for call \(callID)")
 
-        do {
-            try TonePhoneCore.shared.answerCall(callID)
-        } catch {
-            errorMessage = "Failed to answer call: \(error.localizedDescription)"
-            print("AppViewModel: Failed to answer call: \(error)")
+        // Check microphone permission first
+        requestMicrophonePermission { [weak self] granted in
+            guard let self = self else { return }
+
+            if !granted {
+                self.showMicrophonePermissionError()
+                return
+            }
+
+            print("AppViewModel: Microphone permission granted, about to hold other calls")
+
+            // Put any active calls on hold first (only holds already-established calls)
+            self.holdAllActiveCalls()
+
+            // Stop ringtone BEFORE answering to release audio device
+            IncomingCallManager.shared.handleCallEnded()
+
+            print("AppViewModel: Now answering call \(callID)")
+            do {
+                try TonePhoneCore.shared.answerCall(callID)
+                print("AppViewModel: answerCall succeeded for call \(callID)")
+            } catch {
+                self.errorMessage = "Failed to answer call: \(error.localizedDescription)"
+                print("AppViewModel: Failed to answer call: \(error)")
+            }
         }
     }
 
@@ -885,6 +954,7 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        print("AppViewModel: toggleHold called for call \(callID), current isOnHold: \(isOnHold)")
         let newHoldState = !isOnHold
         do {
             try TonePhoneCore.shared.holdCall(callID, hold: newHoldState)
