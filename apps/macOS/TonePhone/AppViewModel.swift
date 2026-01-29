@@ -129,6 +129,20 @@ final class AppViewModel: ObservableObject {
     /// All active calls tracked by ID.
     @Published private(set) var activeCalls: [CallID: CallInfo] = [:]
 
+    // MARK: - Audio Device State
+
+    /// Available input devices (microphones).
+    @Published private(set) var inputDevices: [AudioDevice] = []
+
+    /// Available output devices (speakers).
+    @Published private(set) var outputDevices: [AudioDevice] = []
+
+    /// Currently selected input device (nil = system default).
+    @Published private(set) var selectedInputDevice: AudioDevice?
+
+    /// Currently selected output device (nil = system default).
+    @Published private(set) var selectedOutputDevice: AudioDevice?
+
     /// Current call state for UI display (for the selected call).
     @Published private(set) var callState: UICallState = .idle
 
@@ -186,6 +200,7 @@ final class AppViewModel: ObservableObject {
         subscribeToEvents()
         startCore()
         loadAccounts()
+        loadAudioDevicePreferences()
         setupIncomingCallManager()
         autoConnectIfNeeded()
         showAddAccountIfEmpty()
@@ -274,6 +289,9 @@ final class AppViewModel: ObservableObject {
 
         case .callStateChanged(let callID, let state):
             handleCallStateChanged(callID: callID, state: state)
+
+        case .audioDeviceChanged:
+            handleAudioDeviceChanged()
 
         case .coreStateChanged, .mediaChanged:
             // Handled elsewhere or not needed for registration status
@@ -1031,5 +1049,162 @@ final class AppViewModel: ObservableObject {
     func showActiveCall() {
         guard activeCallID != nil else { return }
         currentScreen = .activeCall
+    }
+
+    // MARK: - Audio Device Management
+
+    /// UserDefaults keys for audio device preferences.
+    private enum AudioDeviceKeys {
+        static let inputDeviceName = "selectedInputDeviceName"
+        static let outputDeviceName = "selectedOutputDeviceName"
+    }
+
+    /// Refreshes the list of available audio devices and validates selections.
+    func refreshAudioDevices() {
+        inputDevices = TonePhoneCore.shared.getInputDevices()
+        outputDevices = TonePhoneCore.shared.getOutputDevices()
+
+        // Validate selected input device still exists
+        if let selected = selectedInputDevice, !selected.id.isEmpty {
+            if let existing = inputDevices.first(where: { $0.id == selected.id }) {
+                selectedInputDevice = existing
+            } else {
+                // Device no longer exists - fall back to system default
+                print("AppViewModel: Input device '\(selected.name)' no longer available, using system default")
+                selectedInputDevice = nil
+                clearSavedInputDevice()
+            }
+        }
+
+        // Validate selected output device still exists
+        if let selected = selectedOutputDevice, !selected.id.isEmpty {
+            if let existing = outputDevices.first(where: { $0.id == selected.id }) {
+                selectedOutputDevice = existing
+            } else {
+                // Device no longer exists - fall back to system default
+                print("AppViewModel: Output device '\(selected.name)' no longer available, using system default")
+                selectedOutputDevice = nil
+                clearSavedOutputDevice()
+            }
+        }
+    }
+
+    /// Loads audio device preferences from UserDefaults and applies them.
+    private func loadAudioDevicePreferences() {
+        let defaults = UserDefaults.standard
+
+        // First refresh device list
+        inputDevices = TonePhoneCore.shared.getInputDevices()
+        outputDevices = TonePhoneCore.shared.getOutputDevices()
+
+        // Load and match saved input device
+        if let savedInputName = defaults.string(forKey: AudioDeviceKeys.inputDeviceName),
+           !savedInputName.isEmpty {
+            if let matchingDevice = inputDevices.first(where: { $0.name == savedInputName }) {
+                selectedInputDevice = matchingDevice
+                // Apply the saved device
+                do {
+                    try TonePhoneCore.shared.setInputDevice(matchingDevice)
+                    print("AppViewModel: Restored input device: \(matchingDevice.name)")
+                } catch {
+                    print("AppViewModel: Failed to restore input device: \(error)")
+                }
+            } else {
+                // Saved device no longer exists - clear preference and use default
+                print("AppViewModel: Saved input device '\(savedInputName)' not found, using system default")
+                clearSavedInputDevice()
+            }
+        }
+
+        // Load and match saved output device
+        if let savedOutputName = defaults.string(forKey: AudioDeviceKeys.outputDeviceName),
+           !savedOutputName.isEmpty {
+            if let matchingDevice = outputDevices.first(where: { $0.name == savedOutputName }) {
+                selectedOutputDevice = matchingDevice
+                // Apply the saved device
+                do {
+                    try TonePhoneCore.shared.setOutputDevice(matchingDevice)
+                    print("AppViewModel: Restored output device: \(matchingDevice.name)")
+                } catch {
+                    print("AppViewModel: Failed to restore output device: \(error)")
+                }
+            } else {
+                // Saved device no longer exists - clear preference and use default
+                print("AppViewModel: Saved output device '\(savedOutputName)' not found, using system default")
+                clearSavedOutputDevice()
+            }
+        }
+    }
+
+    /// Saves audio device preferences to UserDefaults.
+    private func saveAudioDevicePreferences() {
+        let defaults = UserDefaults.standard
+
+        if let device = selectedInputDevice, !device.id.isEmpty {
+            defaults.set(device.name, forKey: AudioDeviceKeys.inputDeviceName)
+        } else {
+            defaults.removeObject(forKey: AudioDeviceKeys.inputDeviceName)
+        }
+
+        if let device = selectedOutputDevice, !device.id.isEmpty {
+            defaults.set(device.name, forKey: AudioDeviceKeys.outputDeviceName)
+        } else {
+            defaults.removeObject(forKey: AudioDeviceKeys.outputDeviceName)
+        }
+    }
+
+    /// Clears saved input device preference.
+    private func clearSavedInputDevice() {
+        UserDefaults.standard.removeObject(forKey: AudioDeviceKeys.inputDeviceName)
+    }
+
+    /// Clears saved output device preference.
+    private func clearSavedOutputDevice() {
+        UserDefaults.standard.removeObject(forKey: AudioDeviceKeys.outputDeviceName)
+    }
+
+    /// Selects an input device (microphone).
+    /// - Parameter device: The device to select, or nil for system default.
+    func selectInputDevice(_ device: AudioDevice?) {
+        selectedInputDevice = device
+
+        do {
+            try TonePhoneCore.shared.setInputDevice(device)
+            saveAudioDevicePreferences()
+            print("AppViewModel: Input device set to \(device?.name ?? "System Default")")
+        } catch {
+            errorMessage = "Failed to set input device: \(error.localizedDescription)"
+            print("AppViewModel: Failed to set input device: \(error)")
+        }
+    }
+
+    /// Selects an output device (speaker).
+    /// - Parameter device: The device to select, or nil for system default.
+    func selectOutputDevice(_ device: AudioDevice?) {
+        selectedOutputDevice = device
+
+        do {
+            try TonePhoneCore.shared.setOutputDevice(device)
+            saveAudioDevicePreferences()
+            print("AppViewModel: Output device set to \(device?.name ?? "System Default")")
+        } catch {
+            errorMessage = "Failed to set output device: \(error.localizedDescription)"
+            print("AppViewModel: Failed to set output device: \(error)")
+        }
+    }
+
+    /// Returns the name of the current system default input device.
+    func getDefaultInputDeviceName() -> String? {
+        inputDevices.first(where: { $0.isDefault })?.name
+    }
+
+    /// Returns the name of the current system default output device.
+    func getDefaultOutputDeviceName() -> String? {
+        outputDevices.first(where: { $0.isDefault })?.name
+    }
+
+    /// Handles audio device changes (hot-plug events).
+    private func handleAudioDeviceChanged() {
+        refreshAudioDevices()
     }
 }
