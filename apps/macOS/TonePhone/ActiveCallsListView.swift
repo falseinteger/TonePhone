@@ -223,31 +223,36 @@ private struct CallRowView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Status indicator
-            statusIndicator
+            // Tappable area for selection (excludes action buttons)
+            HStack(spacing: 10) {
+                // Status indicator
+                statusIndicator
 
-            // Call info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(call.displayName)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
+                // Call info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(call.displayName)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
 
-                HStack(spacing: 4) {
-                    Text(call.statusText)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        Text(call.statusText)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
 
-                    if call.isMuted {
-                        Image(systemName: "mic.slash.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.orange)
+                        if call.isMuted {
+                            Image(systemName: "mic.slash.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                        }
                     }
                 }
+
+                Spacer()
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
 
-            Spacer()
-
-            // Action buttons
+            // Action buttons (outside tap gesture area)
             // Always visible for incoming and established calls, hover for others
             if shouldShowButtons {
                 actionButtons
@@ -260,8 +265,6 @@ private struct CallRowView: View {
                 .padding(.horizontal, -6)
                 .padding(.vertical, -2)
         )
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering

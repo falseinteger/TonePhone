@@ -14,6 +14,11 @@
 
 #include <pthread.h>
 
+/* Enable verbose event debugging (set to 1 for detailed call/audio dumps) */
+#ifndef TP_VERBOSE_EVENT_DEBUG
+#define TP_VERBOSE_EVENT_DEBUG 0
+#endif
+
 /* =============================================================================
  * Internal State
  * ============================================================================= */
@@ -217,26 +222,33 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
         },
     };
 
-    info("tp_events: call %u state changed to %d (%s)\n", call_id, state, text ? text : "");
+    info("tp_events: call %u state changed to %d\n", call_id, state);
 
-    /* Extra debug logging for ESTABLISHED state */
+#if TP_VERBOSE_EVENT_DEBUG
+    /* Extra debug logging for ESTABLISHED state - disabled by default */
     if (state == TP_CALL_STATE_ESTABLISHED) {
         bool is_outgoing = call_is_outgoing(call);
-        info("tp_events: ESTABLISHED - call direction: %s\n",
+        debug("tp_events: ESTABLISHED - call direction: %s\n",
              is_outgoing ? "OUTGOING" : "INCOMING");
 
         struct audio *au = call_audio(call);
         if (au) {
-            info("tp_events: ESTABLISHED - audio exists, started=%d, muted=%d\n",
+            debug("tp_events: ESTABLISHED - audio exists, started=%d, muted=%d\n",
                  audio_started(au), audio_ismuted(au));
         } else {
             warning("tp_events: ESTABLISHED - NO AUDIO!\n");
         }
-        /* Print full call debug info */
-        info("tp_events: === ESTABLISHED CALL DEBUG ===\n");
-        info("%H\n", call_debug, call);
-        info("tp_events: === END ESTABLISHED DEBUG ===\n");
+        debug("%H\n", call_debug, call);
     }
+#else
+    /* Minimal logging - just warn if audio is missing */
+    if (state == TP_CALL_STATE_ESTABLISHED) {
+        struct audio *au = call_audio(call);
+        if (!au) {
+            warning("tp_events: ESTABLISHED - NO AUDIO!\n");
+        }
+    }
+#endif
 
     cb(&tp_event, ctx);
 }
@@ -249,23 +261,6 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     tp_event_callback_t cb;
     void *ctx;
 
-    /* Log all media events for debugging */
-    if (ev == BEVENT_CALL_RTPESTAB) {
-        info("tp_events: === MEDIA EVENT: RTP ESTABLISHED ===\n");
-        struct call *call = bevent_get_call(event);
-        if (call) {
-            struct audio *au = call_audio(call);
-            if (au) {
-                info("tp_events: RTPESTAB - audio started=%d, muted=%d\n",
-                     audio_started(au), audio_ismuted(au));
-                info("tp_events: RTPESTAB - call is %s\n",
-                     call_is_outgoing(call) ? "OUTGOING" : "INCOMING");
-            }
-        }
-    } else if (ev == BEVENT_CALL_MENC) {
-        info("tp_events: === MEDIA EVENT: MEDIA ENCRYPTED ===\n");
-    }
-
     /* Only handle RTP establishment for now */
     if (ev != BEVENT_CALL_RTPESTAB && ev != BEVENT_CALL_MENC)
         return;
@@ -274,12 +269,24 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     if (!call)
         return;
 
-    /* Log audio state when RTP is established */
+#if TP_VERBOSE_EVENT_DEBUG
+    /* Verbose media event logging - disabled by default */
     if (ev == BEVENT_CALL_RTPESTAB) {
+        debug("tp_events: RTP ESTABLISHED\n");
         struct audio *au = call_audio(call);
         if (au) {
-            info("tp_events: RTPESTAB - audio started=%d\n", audio_started(au));
-        } else {
+            debug("tp_events: RTPESTAB - audio started=%d, muted=%d\n",
+                 audio_started(au), audio_ismuted(au));
+        }
+    } else if (ev == BEVENT_CALL_MENC) {
+        debug("tp_events: MEDIA ENCRYPTED\n");
+    }
+#endif
+
+    /* Warn if audio is missing at RTP establishment */
+    if (ev == BEVENT_CALL_RTPESTAB) {
+        struct audio *au = call_audio(call);
+        if (!au) {
             warning("tp_events: RTPESTAB - NO AUDIO OBJECT\n");
         }
     }
@@ -313,8 +320,10 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 {
     (void)arg;
 
-    /* Log ALL events for debugging */
-    info("tp_events: === RECEIVED BARESIP EVENT: %d ===\n", ev);
+#if TP_VERBOSE_EVENT_DEBUG
+    /* Log ALL events for debugging - disabled by default */
+    debug("tp_events: received baresip event: %d\n", ev);
+#endif
 
     /* Route events to appropriate handlers based on type */
     switch (ev) {

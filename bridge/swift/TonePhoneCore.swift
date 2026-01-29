@@ -531,7 +531,7 @@ public final class TonePhoneCore {
     ///   - displayName: Optional display name
     ///   - transport: Transport protocol ("udp", "tcp", or "tls")
     ///   - stunServer: STUN server for NAT traversal (defaults to Google's STUN server)
-    ///   - medianat: NAT traversal method (defaults to "ice")
+    ///   - medianat: NAT traversal method (defaults to "stun")
     ///   - natPinhole: Enable NAT pinhole keep-alive (defaults to true for better NAT traversal)
     ///   - registerImmediately: Whether to register immediately after adding
     /// - Returns: The account ID assigned to the new account
