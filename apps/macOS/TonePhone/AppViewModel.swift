@@ -420,8 +420,14 @@ final class AppViewModel: ObservableObject {
     ///   - callID: The call ID that ended
     ///   - delay: Delay before cleanup runs
     private func scheduleCallCleanup(callID: CallID, delay: TimeInterval = 1.0) {
+        // Cancel any existing cleanup first
+        cancelPendingCleanup()
+
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
+
+            // Clear the reference to avoid stale state
+            self.pendingCleanupWorkItem = nil
 
             // Remove the ended call from tracking
             self.activeCalls.removeValue(forKey: callID)
@@ -432,6 +438,8 @@ final class AppViewModel: ObservableObject {
             }
         }
 
+        // Store reference so it can be cancelled
+        pendingCleanupWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
@@ -763,7 +771,9 @@ final class AppViewModel: ObservableObject {
     /// Call this before making or answering a new call.
     private func holdAllActiveCalls() {
         print("AppViewModel: holdAllActiveCalls called, activeCalls count: \(activeCalls.count)")
-        for (callID, callInfo) in activeCalls {
+        // Iterate over a snapshot to avoid mutating while iterating
+        let callsSnapshot = activeCalls
+        for (callID, callInfo) in callsSnapshot {
             print("AppViewModel: Checking call \(callID), state: \(callInfo.state), isOnHold: \(callInfo.isOnHold)")
             // Only hold calls that are established and not already on hold
             if case .established = callInfo.state, !callInfo.isOnHold {

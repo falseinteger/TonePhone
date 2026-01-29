@@ -108,51 +108,34 @@ static void ua_exit_handler(void *arg)
     re_cancel();
 }
 
+/* Enable verbose SIP tracing (set to 1 for detailed SIP message dumps) */
+#ifndef TP_ENABLE_SIP_TRACE
+#define TP_ENABLE_SIP_TRACE 0
+#endif
+
+#if TP_ENABLE_SIP_TRACE
 /**
  * @brief SIP trace handler - logs all SIP messages for debugging
+ *
+ * Note: Only enabled when TP_ENABLE_SIP_TRACE is defined.
+ * SIP messages may contain sensitive information.
  */
 static void sip_trace_handler(bool tx, enum sip_transp tp,
                               const struct sa *src, const struct sa *dst,
                               const uint8_t *pkt, size_t len, void *arg)
 {
     (void)arg;
+    (void)pkt;
 
-    /* Log direction and transport */
-    info("tp_core: SIP %s via %s %J -> %J (len=%zu)\n",
+    /* Log direction and transport - basic info only */
+    debug("tp_core: SIP %s via %s %J -> %J (len=%zu)\n",
          tx ? ">>>" : "<<<",
          tp == SIP_TRANSP_UDP ? "UDP" :
          tp == SIP_TRANSP_TCP ? "TCP" :
          tp == SIP_TRANSP_TLS ? "TLS" : "???",
          src, dst, len);
-
-    /* For outgoing messages with SDP, log the full message */
-    if (tx && len > 100) {
-        /* Check if this looks like a 200 OK with SDP */
-        if (len >= 12 && pkt[0] == 'S' && pkt[1] == 'I' && pkt[2] == 'P') {
-            /* Find Content-Type: application/sdp */
-            bool has_sdp = false;
-            for (size_t i = 0; i + 20 < len; i++) {
-                if (pkt[i] == 'a' && pkt[i+1] == 'p' && pkt[i+2] == 'p' &&
-                    pkt[i+3] == 'l' && pkt[i+4] == 'i') {
-                    has_sdp = true;
-                    break;
-                }
-            }
-            if (has_sdp) {
-                info("tp_core: === FULL SIP MESSAGE WITH SDP ===\n");
-                /* Print in chunks to avoid buffer issues */
-                size_t printed = 0;
-                while (printed < len) {
-                    size_t chunk = len - printed;
-                    if (chunk > 500) chunk = 500;
-                    info("%.*s", (int)chunk, pkt + printed);
-                    printed += chunk;
-                }
-                info("\n=== END SIP MESSAGE ===\n");
-            }
-        }
-    }
 }
+#endif
 
 /**
  * @brief Main loop thread entry point
@@ -279,8 +262,10 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
     /* Set exit handler */
     uag_set_exit_handler(ua_exit_handler, NULL);
 
-    /* Enable SIP tracing for debugging */
+#if TP_ENABLE_SIP_TRACE
+    /* Enable SIP tracing for debugging (disabled by default) */
     sip_set_trace_handler(uag_sip(), sip_trace_handler);
+#endif
 
     /* Load configured modules */
     err = conf_modules();
