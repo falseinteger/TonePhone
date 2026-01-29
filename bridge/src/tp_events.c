@@ -217,7 +217,26 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
         },
     };
 
-    info("tp_events: call %u state changed to %d\n", call_id, state);
+    info("tp_events: call %u state changed to %d (%s)\n", call_id, state, text ? text : "");
+
+    /* Extra debug logging for ESTABLISHED state */
+    if (state == TP_CALL_STATE_ESTABLISHED) {
+        bool is_outgoing = call_is_outgoing(call);
+        info("tp_events: ESTABLISHED - call direction: %s\n",
+             is_outgoing ? "OUTGOING" : "INCOMING");
+
+        struct audio *au = call_audio(call);
+        if (au) {
+            info("tp_events: ESTABLISHED - audio exists, started=%d, muted=%d\n",
+                 audio_started(au), audio_ismuted(au));
+        } else {
+            warning("tp_events: ESTABLISHED - NO AUDIO!\n");
+        }
+        /* Print full call debug info */
+        info("tp_events: === ESTABLISHED CALL DEBUG ===\n");
+        info("%H\n", call_debug, call);
+        info("tp_events: === END ESTABLISHED DEBUG ===\n");
+    }
 
     cb(&tp_event, ctx);
 }
@@ -230,6 +249,23 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     tp_event_callback_t cb;
     void *ctx;
 
+    /* Log all media events for debugging */
+    if (ev == BEVENT_CALL_RTPESTAB) {
+        info("tp_events: === MEDIA EVENT: RTP ESTABLISHED ===\n");
+        struct call *call = bevent_get_call(event);
+        if (call) {
+            struct audio *au = call_audio(call);
+            if (au) {
+                info("tp_events: RTPESTAB - audio started=%d, muted=%d\n",
+                     audio_started(au), audio_ismuted(au));
+                info("tp_events: RTPESTAB - call is %s\n",
+                     call_is_outgoing(call) ? "OUTGOING" : "INCOMING");
+            }
+        }
+    } else if (ev == BEVENT_CALL_MENC) {
+        info("tp_events: === MEDIA EVENT: MEDIA ENCRYPTED ===\n");
+    }
+
     /* Only handle RTP establishment for now */
     if (ev != BEVENT_CALL_RTPESTAB && ev != BEVENT_CALL_MENC)
         return;
@@ -237,6 +273,16 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     struct call *call = bevent_get_call(event);
     if (!call)
         return;
+
+    /* Log audio state when RTP is established */
+    if (ev == BEVENT_CALL_RTPESTAB) {
+        struct audio *au = call_audio(call);
+        if (au) {
+            info("tp_events: RTPESTAB - audio started=%d\n", audio_started(au));
+        } else {
+            warning("tp_events: RTPESTAB - NO AUDIO OBJECT\n");
+        }
+    }
 
     /* Get callback (thread-safe) */
     tp_get_event_callback(&cb, &ctx);

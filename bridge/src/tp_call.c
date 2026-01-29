@@ -14,6 +14,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* Declare internal baresip function we need for debugging */
+int call_sdp_get(const struct call *call, struct mbuf **descp, bool offer);
+
 /* =============================================================================
  * Constants
  * ============================================================================= */
@@ -153,6 +156,7 @@ tp_error_t tp_call_answer(tp_call_id_t id)
 {
     call_entry_t *entry;
     struct call *call;
+    int err;
 
     if (id == TP_INVALID_ID) {
         return TP_ERR_INVALID_ARG;
@@ -169,8 +173,45 @@ tp_error_t tp_call_answer(tp_call_id_t id)
     call = entry->call;
     pthread_mutex_unlock(&g_mutex);
 
-    info("tp_call: answering call %u\n", id);
-    call_answer(call, 200, VIDMODE_OFF);
+    info("tp_call: === ANSWERING CALL %u ===\n", id);
+
+    /* Log call state before answering */
+    info("tp_call: call state before answer: %s\n", call_statename(call));
+    info("tp_call: peer URI: %s\n", call_peeruri(call));
+
+    /* Log audio info */
+    struct audio *au = call_audio(call);
+    if (au) {
+        info("tp_call: audio object exists\n");
+    } else {
+        warning("tp_call: NO AUDIO OBJECT!\n");
+    }
+
+    err = call_answer(call, 200, VIDMODE_OFF);
+    if (err) {
+        warning("tp_call: call_answer failed: %m\n", err);
+        return TP_ERR_CALL_FAILED;
+    }
+
+    info("tp_call: call_answer returned successfully\n");
+    info("tp_call: call state after answer: %s\n", call_statename(call));
+
+    /* Log full call debug info */
+    info("tp_call: === CALL DEBUG INFO ===\n");
+    info("%H\n", call_debug, call);
+    info("tp_call: === END CALL DEBUG ===\n");
+
+    /* Get and log the actual SDP */
+    struct mbuf *sdp_mb = NULL;
+    int sdp_err = call_sdp_get(call, &sdp_mb, false);  /* false = answer */
+    if (sdp_err == 0 && sdp_mb) {
+        info("tp_call: === ACTUAL SDP CONTENT ===\n");
+        info("%b\n", mbuf_buf(sdp_mb), mbuf_get_left(sdp_mb));
+        info("tp_call: === END SDP CONTENT ===\n");
+        mem_deref(sdp_mb);
+    } else {
+        warning("tp_call: Failed to get SDP: %m\n", sdp_err);
+    }
 
     return TP_OK;
 }
