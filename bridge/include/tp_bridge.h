@@ -421,6 +421,102 @@ tp_error_t tp_log_get_path(char *buf, size_t size);
 tp_error_t tp_log_flush(void);
 
 /* =============================================================================
+ * Audio Device Types
+ * ============================================================================= */
+
+/**
+ * @brief Audio device type (input or output)
+ */
+typedef enum {
+    TP_AUDIO_DEVICE_INPUT,    /**< Input device (microphone) */
+    TP_AUDIO_DEVICE_OUTPUT,   /**< Output device (speaker) */
+} tp_audio_device_type_t;
+
+/**
+ * @brief Information about an audio device
+ */
+typedef struct {
+    char name[128];           /**< Human-readable device name */
+    char uid[128];            /**< Unique device identifier */
+    tp_audio_device_type_t type;  /**< Device type */
+    bool is_default;          /**< Whether this is the system default */
+} tp_audio_device_t;
+
+/**
+ * @brief List of audio devices
+ */
+typedef struct {
+    tp_audio_device_t *devices;   /**< Array of devices (caller must free with tp_audio_device_list_free) */
+    uint32_t count;               /**< Number of devices in the array */
+} tp_audio_device_list_t;
+
+/* =============================================================================
+ * Audio Device Functions
+ * ============================================================================= */
+
+/**
+ * @brief Get list of available input devices (microphones)
+ * @param out_list Output: list of input devices
+ * @return TP_OK on success, error code otherwise
+ *
+ * Caller must free the list with tp_audio_device_list_free().
+ */
+tp_error_t tp_audio_get_input_devices(tp_audio_device_list_t *out_list);
+
+/**
+ * @brief Get list of available output devices (speakers)
+ * @param out_list Output: list of output devices
+ * @return TP_OK on success, error code otherwise
+ *
+ * Caller must free the list with tp_audio_device_list_free().
+ */
+tp_error_t tp_audio_get_output_devices(tp_audio_device_list_t *out_list);
+
+/**
+ * @brief Free a device list returned by tp_audio_get_*_devices
+ * @param list The list to free
+ */
+void tp_audio_device_list_free(tp_audio_device_list_t *list);
+
+/**
+ * @brief Get the current input device name
+ * @param buf Buffer to store the device name
+ * @param size Size of the buffer
+ * @return TP_OK on success, error code otherwise
+ *
+ * Returns empty string if using system default.
+ */
+tp_error_t tp_audio_get_current_input(char *buf, size_t size);
+
+/**
+ * @brief Get the current output device name
+ * @param buf Buffer to store the device name
+ * @param size Size of the buffer
+ * @return TP_OK on success, error code otherwise
+ *
+ * Returns empty string if using system default.
+ */
+tp_error_t tp_audio_get_current_output(char *buf, size_t size);
+
+/**
+ * @brief Set the input device (microphone)
+ * @param device_name Device name (empty string or NULL for system default)
+ * @return TP_OK on success, error code otherwise
+ *
+ * Takes effect immediately for active calls.
+ */
+tp_error_t tp_audio_set_input_device(const char *device_name);
+
+/**
+ * @brief Set the output device (speaker)
+ * @param device_name Device name (empty string or NULL for system default)
+ * @return TP_OK on success, error code otherwise
+ *
+ * Takes effect immediately for active calls.
+ */
+tp_error_t tp_audio_set_output_device(const char *device_name);
+
+/* =============================================================================
  * Utility Functions
  * ============================================================================= */
 

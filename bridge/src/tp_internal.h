@@ -107,4 +107,26 @@ tp_call_id_t tp_call_register_incoming(struct call *call);
  */
 void tp_call_unregister(tp_call_id_t id);
 
+/* =============================================================================
+ * Audio Device Functions (from tp_audio.c)
+ * ============================================================================= */
+
+/**
+ * @brief Initialize the audio device subsystem
+ *
+ * Sets up CoreAudio device monitoring.
+ * Called from tp_init() after baresip is initialized.
+ *
+ * @return TP_OK on success, error code otherwise
+ */
+tp_error_t tp_audio_init(void);
+
+/**
+ * @brief Close the audio device subsystem
+ *
+ * Removes CoreAudio listeners and cleans up resources.
+ * Called from tp_shutdown() before baresip is closed.
+ */
+void tp_audio_close(void);
+
 #endif /* TP_INTERNAL_H */
