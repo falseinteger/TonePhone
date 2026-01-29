@@ -473,12 +473,14 @@ tp_error_t tp_audio_init(void)
         .mElement = kAudioObjectPropertyElementMain,
     };
 
-    g_audio.device_listener = ^(UInt32 inNumberAddresses,
-                                 const AudioObjectPropertyAddress *inAddresses) {
+    /* Create block and copy to heap (stack blocks become dangling after function returns) */
+    AudioObjectPropertyListenerBlock block = ^(UInt32 inNumberAddresses,
+                                                const AudioObjectPropertyAddress *inAddresses) {
         (void)inNumberAddresses;
         (void)inAddresses;
         on_device_change();
     };
+    g_audio.device_listener = Block_copy(block);
 
     OSStatus status = AudioObjectAddPropertyListenerBlock(
         kAudioObjectSystemObject, &addr,

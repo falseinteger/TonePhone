@@ -1101,13 +1101,15 @@ final class AppViewModel: ObservableObject {
         if let savedInputName = defaults.string(forKey: AudioDeviceKeys.inputDeviceName),
            !savedInputName.isEmpty {
             if let matchingDevice = inputDevices.first(where: { $0.name == savedInputName }) {
-                selectedInputDevice = matchingDevice
                 // Apply the saved device
                 do {
                     try TonePhoneCore.shared.setInputDevice(matchingDevice)
+                    selectedInputDevice = matchingDevice
                     print("AppViewModel: Restored input device: \(matchingDevice.name)")
                 } catch {
+                    // Failed to apply - keep selection as nil (system default)
                     print("AppViewModel: Failed to restore input device: \(error)")
+                    clearSavedInputDevice()
                 }
             } else {
                 // Saved device no longer exists - clear preference and use default
@@ -1120,13 +1122,15 @@ final class AppViewModel: ObservableObject {
         if let savedOutputName = defaults.string(forKey: AudioDeviceKeys.outputDeviceName),
            !savedOutputName.isEmpty {
             if let matchingDevice = outputDevices.first(where: { $0.name == savedOutputName }) {
-                selectedOutputDevice = matchingDevice
                 // Apply the saved device
                 do {
                     try TonePhoneCore.shared.setOutputDevice(matchingDevice)
+                    selectedOutputDevice = matchingDevice
                     print("AppViewModel: Restored output device: \(matchingDevice.name)")
                 } catch {
+                    // Failed to apply - keep selection as nil (system default)
                     print("AppViewModel: Failed to restore output device: \(error)")
+                    clearSavedOutputDevice()
                 }
             } else {
                 // Saved device no longer exists - clear preference and use default
