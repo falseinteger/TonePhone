@@ -1166,6 +1166,7 @@ final class AppViewModel: ObservableObject {
     /// Selects an input device (microphone).
     /// - Parameter device: The device to select, or nil for system default.
     func selectInputDevice(_ device: AudioDevice?) {
+        let previousDevice = selectedInputDevice
         selectedInputDevice = device
 
         do {
@@ -1173,6 +1174,8 @@ final class AppViewModel: ObservableObject {
             saveAudioDevicePreferences()
             print("AppViewModel: Input device set to \(device?.name ?? "System Default")")
         } catch {
+            // Roll back on failure
+            selectedInputDevice = previousDevice
             errorMessage = "Failed to set input device: \(error.localizedDescription)"
             print("AppViewModel: Failed to set input device: \(error)")
         }
@@ -1181,6 +1184,7 @@ final class AppViewModel: ObservableObject {
     /// Selects an output device (speaker).
     /// - Parameter device: The device to select, or nil for system default.
     func selectOutputDevice(_ device: AudioDevice?) {
+        let previousDevice = selectedOutputDevice
         selectedOutputDevice = device
 
         do {
@@ -1188,6 +1192,8 @@ final class AppViewModel: ObservableObject {
             saveAudioDevicePreferences()
             print("AppViewModel: Output device set to \(device?.name ?? "System Default")")
         } catch {
+            // Roll back on failure
+            selectedOutputDevice = previousDevice
             errorMessage = "Failed to set output device: \(error.localizedDescription)"
             print("AppViewModel: Failed to set output device: \(error)")
         }

@@ -340,29 +340,28 @@ tp_error_t tp_audio_get_current_output(char *buf, size_t size)
  * @brief Apply audio device to all active calls
  *
  * Uses baresip's audio_set_source/audio_set_player with "audiounit" module.
+ *
+ * @param is_input true for input (microphone), false for output (speaker)
+ * @param device_name Device name, or NULL/empty for system default
+ * @return TP_OK on success, error code if any call failed to switch
  */
-static void apply_audio_device_to_calls(bool is_input, const char *device_name)
+static tp_error_t apply_audio_device_to_calls(bool is_input, const char *device_name)
 {
     /* Access the list of UAs via baresip */
     struct list *uas = uag_list();
     struct le *le;
+    tp_error_t result = TP_OK;
 
     if (!uas) {
-        return;
+        return TP_OK;  /* No UAs, nothing to do */
     }
 
-    /* For audiounit module, device is specified as:
-     * - Empty string or NULL: use system default
-     * - Device name: use specific device
-     *
-     * The format for baresip audio functions is "module,device"
+    /* For audiounit module:
+     * - mod parameter: "audiounit" (module name)
+     * - device parameter: device name or NULL for system default
      */
-    char device_spec[256];
-    if (device_name && device_name[0] != '\0') {
-        snprintf(device_spec, sizeof(device_spec), "audiounit,%s", device_name);
-    } else {
-        snprintf(device_spec, sizeof(device_spec), "audiounit");
-    }
+    const char *mod = "audiounit";
+    const char *dev = (device_name && device_name[0] != '\0') ? device_name : NULL;
 
     /* Iterate through all UAs and get their current call */
     for (le = list_head(uas); le; le = le->next) {
@@ -375,29 +374,39 @@ static void apply_audio_device_to_calls(bool is_input, const char *device_name)
             if (au) {
                 int err;
                 if (is_input) {
-                    err = audio_set_source(au, device_spec, device_name);
+                    err = audio_set_source(au, mod, dev);
                     if (err) {
                         warning("tp_audio: failed to set input device: %m\n", err);
+                        if (result == TP_OK) {
+                            result = TP_ERR_INTERNAL;
+                        }
                     } else {
                         info("tp_audio: set input device to '%s'\n",
-                             device_name && device_name[0] ? device_name : "(default)");
+                             dev ? dev : "(default)");
                     }
                 } else {
-                    err = audio_set_player(au, device_spec, device_name);
+                    err = audio_set_player(au, mod, dev);
                     if (err) {
                         warning("tp_audio: failed to set output device: %m\n", err);
+                        if (result == TP_OK) {
+                            result = TP_ERR_INTERNAL;
+                        }
                     } else {
                         info("tp_audio: set output device to '%s'\n",
-                             device_name && device_name[0] ? device_name : "(default)");
+                             dev ? dev : "(default)");
                     }
                 }
             }
         }
     }
+
+    return result;
 }
 
 tp_error_t tp_audio_set_input_device(const char *device_name)
 {
+    tp_error_t result;
+
     pthread_mutex_lock(&g_mutex);
 
     if (device_name && device_name[0] != '\0') {
@@ -411,17 +420,19 @@ tp_error_t tp_audio_set_input_device(const char *device_name)
 
     /* Apply to active calls - need to enter re thread context */
     re_thread_enter();
-    apply_audio_device_to_calls(true, device_name);
+    result = apply_audio_device_to_calls(true, device_name);
     re_thread_leave();
 
     info("tp_audio: input device set to '%s'\n",
          device_name && device_name[0] ? device_name : "(system default)");
 
-    return TP_OK;
+    return result;
 }
 
 tp_error_t tp_audio_set_output_device(const char *device_name)
 {
+    tp_error_t result;
+
     pthread_mutex_lock(&g_mutex);
 
     if (device_name && device_name[0] != '\0') {
@@ -435,13 +446,13 @@ tp_error_t tp_audio_set_output_device(const char *device_name)
 
     /* Apply to active calls - need to enter re thread context */
     re_thread_enter();
-    apply_audio_device_to_calls(false, device_name);
+    result = apply_audio_device_to_calls(false, device_name);
     re_thread_leave();
 
     info("tp_audio: output device set to '%s'\n",
          device_name && device_name[0] ? device_name : "(system default)");
 
-    return TP_OK;
+    return result;
 }
 
 /* =============================================================================
