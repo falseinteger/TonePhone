@@ -428,6 +428,12 @@ public final class TonePhoneCore {
             #------------------------------------------------------------
             sip_listen 0.0.0.0:0
 
+            #------------------------------------------------------------
+            # Call settings
+            #------------------------------------------------------------
+            # Accept incoming calls (required for incoming call handling)
+            call_accept yes
+
             """
             try minimalConfig.write(to: configFile, atomically: true, encoding: .utf8)
         }
@@ -524,6 +530,9 @@ public final class TonePhoneCore {
     ///   - password: The SIP password
     ///   - displayName: Optional display name
     ///   - transport: Transport protocol ("udp", "tcp", or "tls")
+    ///   - stunServer: STUN server for NAT traversal (defaults to Google's STUN server)
+    ///   - medianat: NAT traversal method (defaults to "stun")
+    ///   - natPinhole: Enable NAT pinhole keep-alive (defaults to true for better NAT traversal)
     ///   - registerImmediately: Whether to register immediately after adding
     /// - Returns: The account ID assigned to the new account
     /// - Throws: `TonePhoneError` if adding the account fails
@@ -532,46 +541,57 @@ public final class TonePhoneCore {
         password: String,
         displayName: String? = nil,
         transport: String? = nil,
+        stunServer: String? = "stun:stun.l.google.com:19302",
+        medianat: String? = "stun",
+        natPinhole: Bool = true,
         registerImmediately: Bool = true
     ) throws -> AccountID {
-        var config = tp_account_config_t()
+        // Collect all optional strings that need to live through the C call
+        let optionalStrings: [(String?, (inout tp_account_config_t, UnsafePointer<CChar>) -> Void)] = [
+            (displayName, { cfg, ptr in cfg.display_name = ptr }),
+            (transport, { cfg, ptr in cfg.transport = ptr }),
+            (stunServer, { cfg, ptr in cfg.stun_server = ptr }),
+            (medianat, { cfg, ptr in cfg.medianat = ptr }),
+        ]
 
-        // Use withCString to ensure strings stay valid during the C call
         return try sipURI.withCString { sipURIPtr in
             try password.withCString { passwordPtr in
+                var config = tp_account_config_t()
                 config.sip_uri = sipURIPtr
                 config.password = passwordPtr
                 config.register_on_add = registerImmediately
+                config.nat_pinhole = natPinhole
                 config.display_name = nil
                 config.auth_user = nil
                 config.outbound_proxy = nil
                 config.transport = nil
+                config.stun_server = nil
+                config.medianat = nil
 
-                // Handle optional display name
-                let withDisplayName: (inout tp_account_config_t) throws -> AccountID = { cfg in
-                    if let displayName = displayName {
-                        return try displayName.withCString { displayNamePtr in
-                            cfg.display_name = displayNamePtr
-                            return try self.addAccountWithTransport(&cfg, transport: transport)
-                        }
-                    } else {
-                        return try self.addAccountWithTransport(&cfg, transport: transport)
-                    }
-                }
-
-                return try withDisplayName(&config)
+                return try withOptionalCStrings(optionalStrings, config: &config)
             }
         }
     }
 
-    private func addAccountWithTransport(_ config: inout tp_account_config_t, transport: String?) throws -> AccountID {
-        if let transport = transport {
-            return try transport.withCString { transportPtr in
-                config.transport = transportPtr
-                return try addAccountWithConfig(&config)
+    /// Helper to recursively handle optional C strings for account config.
+    private func withOptionalCStrings(
+        _ pairs: [(String?, (inout tp_account_config_t, UnsafePointer<CChar>) -> Void)],
+        config: inout tp_account_config_t
+    ) throws -> AccountID {
+        guard let (value, setter) = pairs.first else {
+            // Base case: all strings processed, make the C call
+            return try addAccountWithConfig(&config)
+        }
+
+        let remaining = Array(pairs.dropFirst())
+
+        if let value = value {
+            return try value.withCString { ptr in
+                setter(&config, ptr)
+                return try withOptionalCStrings(remaining, config: &config)
             }
         } else {
-            return try addAccountWithConfig(&config)
+            return try withOptionalCStrings(remaining, config: &config)
         }
     }
 

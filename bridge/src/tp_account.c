@@ -175,6 +175,32 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
         len += ret;
     }
 
+    /* Add STUN server for NAT traversal */
+    if (config->stun_server && config->stun_server[0] != '\0') {
+        ret = re_snprintf(buf + len, sz - len, ";stunserver=%s",
+                         config->stun_server);
+        if (ret < 0 || (size_t)ret >= (sz - len))
+            return ENOMEM;
+        len += ret;
+    }
+
+    /* Add medianat for NAT traversal method */
+    if (config->medianat && config->medianat[0] != '\0') {
+        ret = re_snprintf(buf + len, sz - len, ";medianat=%s",
+                         config->medianat);
+        if (ret < 0 || (size_t)ret >= (sz - len))
+            return ENOMEM;
+        len += ret;
+    }
+
+    /* Add NAT pinhole keep-alive if enabled */
+    if (config->nat_pinhole) {
+        ret = re_snprintf(buf + len, sz - len, ";natpinhole=yes");
+        if (ret < 0 || (size_t)ret >= (sz - len))
+            return ENOMEM;
+        len += ret;
+    }
+
     /* Add registration interval to enable registration */
     ret = re_snprintf(buf + len, sz - len, ";regint=3600");
     if (ret < 0 || (size_t)ret >= (sz - len))
@@ -221,8 +247,13 @@ tp_error_t tp_account_add(const tp_account_config_t *config,
         return TP_ERR_INVALID_ARG;
     }
 
-    /* Log without credentials (sip_uri doesn't contain password) */
+    /* Log configuration (without password) */
     info("tp_account: creating UA for %s\n", config->sip_uri);
+    info("tp_account: transport=%s, stun=%s, medianat=%s, natpinhole=%s\n",
+         config->transport ? config->transport : "(none)",
+         config->stun_server ? config->stun_server : "(none)",
+         config->medianat ? config->medianat : "(none)",
+         config->nat_pinhole ? "yes" : "no");
     info("tp_account: conf_cur() = %p, conf_config() = %p\n",
          conf_cur(), conf_config());
 
