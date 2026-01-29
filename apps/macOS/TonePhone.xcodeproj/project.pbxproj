@@ -359,7 +359,7 @@
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lz",
@@ -397,7 +397,7 @@
 				INFOPLIST_FILE = TonePhone/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../output/macos-fat/lib";
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lz",

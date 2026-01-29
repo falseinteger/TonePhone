@@ -103,9 +103,6 @@ final class AppViewModel: ObservableObject {
     /// Whether the connection progress sheet is showing.
     @Published var isConnectionSheetPresented = false
 
-    /// Whether the settings sheet is showing.
-    @Published var isSettingsSheetPresented = false
-
     /// The account currently being connected.
     @Published private(set) var connectingAccount: SIPAccount?
 
@@ -568,11 +565,6 @@ final class AppViewModel: ObservableObject {
             connectingAccount = nil
             currentScreen = .accountList
         }
-    }
-
-    /// Shows the settings sheet.
-    func showSettingsSheet() {
-        isSettingsSheetPresented = true
     }
 
     /// Shows the account configuration sheet for adding a new account.

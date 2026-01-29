@@ -31,9 +31,6 @@ struct ContentView: View {
             .sheet(isPresented: $viewModel.isConnectionSheetPresented) {
                 ConnectionProgressView(viewModel: viewModel)
             }
-            .sheet(isPresented: $viewModel.isSettingsSheetPresented) {
-                SettingsView()
-            }
             .alert("Error", isPresented: errorBinding) {
                 Button("OK", role: .cancel) {
                     viewModel.errorMessage = nil

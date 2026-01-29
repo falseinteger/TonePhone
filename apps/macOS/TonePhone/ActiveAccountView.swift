@@ -64,15 +64,25 @@ struct ActiveAccountView: View {
             Spacer()
 
             // Settings button
-            Button {
-                viewModel.showSettingsSheet()
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+            } else {
+                Button {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
             }
-            .buttonStyle(.plain)
-            .help("Settings")
 
             // Disconnect button
             Button {

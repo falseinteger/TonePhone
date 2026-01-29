@@ -126,13 +126,21 @@ struct AccountListView: View {
             .buttonStyle(.borderless)
             .help("Add Account")
 
-            Button {
-                viewModel.showSettingsSheet()
-            } label: {
-                Image(systemName: "gearshape")
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
+            } else {
+                Button {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
             }
-            .buttonStyle(.borderless)
-            .help("Settings")
 
             Spacer()
 

@@ -5,7 +5,33 @@
 //  Manages app settings persistence using UserDefaults.
 //
 
+import AppKit
 import Foundation
+import SwiftUI
+
+/// Appearance mode for the app.
+enum AppearanceMode: String, Codable, CaseIterable {
+    case light
+    case dark
+    case auto
+
+    var displayName: String {
+        switch self {
+        case .auto: return "Auto"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    /// Returns the NSAppearance for the mode, or nil for system auto.
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        case .auto: return nil
+        }
+    }
+}
 
 /// DTMF transmission mode for SIP calls.
 enum DTMFMode: String, Codable, CaseIterable {
@@ -66,11 +92,14 @@ final class SettingsStore: ObservableObject {
         static let logLevel = "settings.logLevel"
         static let defaultTransport = "settings.defaultTransport"
         static let stunServer = "settings.stunServer"
+        static let stunServers = "settings.stunServers"
         static let natMethod = "settings.natMethod"
         static let natPinhole = "settings.natPinhole"
         static let dtmfMode = "settings.dtmfMode"
         static let rtcpFeedback = "settings.rtcpFeedback"
         static let registerOnStartup = "settings.registerOnStartup"
+        static let appearanceMode = "settings.appearanceMode"
+        static let selectedRingtone = "settings.selectedRingtone"
     }
 
     // MARK: - Default Values
@@ -79,11 +108,14 @@ final class SettingsStore: ObservableObject {
         static let logLevel = LogLevel.info.rawValue
         static let defaultTransport = "udp"
         static let stunServer = "stun:stun.l.google.com:19302"
+        static let stunServers = ["stun:stun.l.google.com:19302"]
         static let natMethod = "stun"
         static let natPinhole = true
         static let dtmfMode = "rfc2833"
         static let rtcpFeedback = true
         static let registerOnStartup = true
+        static let appearanceMode = "auto"
+        static let selectedRingtone = "Ping.aiff"
     }
 
     // MARK: - Published Properties
@@ -103,10 +135,21 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// STUN server address.
+    /// STUN server address (legacy, kept for bridge compatibility).
     @Published var stunServer: String {
         didSet {
             defaults.set(stunServer, forKey: Keys.stunServer)
+        }
+    }
+
+    /// STUN servers list.
+    @Published var stunServers: [String] {
+        didSet {
+            defaults.set(stunServers, forKey: Keys.stunServers)
+            // Keep legacy stunServer in sync with first entry
+            if let first = stunServers.first, first != stunServer {
+                stunServer = first
+            }
         }
     }
 
@@ -145,6 +188,21 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Appearance mode (light, dark, auto).
+    @Published var appearanceMode: AppearanceMode {
+        didSet {
+            defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode)
+            applyAppearance()
+        }
+    }
+
+    /// Selected ringtone filename from /System/Library/Sounds/.
+    @Published var selectedRingtone: String {
+        didSet {
+            defaults.set(selectedRingtone, forKey: Keys.selectedRingtone)
+        }
+    }
+
     // MARK: - Initialization
 
     private init() {
@@ -156,6 +214,14 @@ final class SettingsStore: ObservableObject {
         self.defaultTransport = SIPTransport(rawValue: transportString) ?? .udp
 
         self.stunServer = defaults.string(forKey: Keys.stunServer) ?? Defaults.stunServer
+
+        // STUN servers (migrate from single stunServer if needed)
+        if let savedServers = defaults.stringArray(forKey: Keys.stunServers) {
+            self.stunServers = savedServers
+        } else {
+            let legacyServer = defaults.string(forKey: Keys.stunServer) ?? Defaults.stunServer
+            self.stunServers = [legacyServer]
+        }
 
         let natMethodString = defaults.string(forKey: Keys.natMethod) ?? Defaults.natMethod
         self.natMethod = NATMethod(rawValue: natMethodString) ?? .stun
@@ -182,8 +248,14 @@ final class SettingsStore: ObservableObject {
             self.registerOnStartup = Defaults.registerOnStartup
         }
 
-        // Apply log level on init
+        let appearanceModeString = defaults.string(forKey: Keys.appearanceMode) ?? Defaults.appearanceMode
+        self.appearanceMode = AppearanceMode(rawValue: appearanceModeString) ?? .auto
+
+        self.selectedRingtone = defaults.string(forKey: Keys.selectedRingtone) ?? Defaults.selectedRingtone
+
+        // Apply settings on init
         applyLogLevel()
+        applyAppearance()
     }
 
     // MARK: - Actions
@@ -193,15 +265,23 @@ final class SettingsStore: ObservableObject {
         TonePhoneCore.shared.setLogLevel(logLevel)
     }
 
+    /// Apply the appearance mode to all app windows.
+    func applyAppearance() {
+        NSApp.appearance = appearanceMode.nsAppearance
+    }
+
     /// Reset all settings to defaults.
     func resetToDefaults() {
         logLevel = .info
         defaultTransport = .udp
         stunServer = Defaults.stunServer
+        stunServers = Defaults.stunServers
         natMethod = .stun
         natPinhole = Defaults.natPinhole
         dtmfMode = .rfc2833
         rtcpFeedback = Defaults.rtcpFeedback
         registerOnStartup = Defaults.registerOnStartup
+        appearanceMode = .auto
+        selectedRingtone = Defaults.selectedRingtone
     }
 }
