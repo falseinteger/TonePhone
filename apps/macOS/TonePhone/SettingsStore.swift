@@ -60,7 +60,7 @@ enum DTMFMode: String, Codable, CaseIterable {
 enum NATMethod: String, Codable, CaseIterable {
     case stun = "stun"
     case ice = "ice"
-    case none = ""
+    case none = "none"
 
     var displayName: String {
         switch self {
@@ -272,16 +272,16 @@ final class SettingsStore: ObservableObject {
 
     /// Reset all settings to defaults.
     func resetToDefaults() {
-        logLevel = .info
-        defaultTransport = .udp
+        logLevel = LogLevel(rawValue: Defaults.logLevel) ?? .info
+        defaultTransport = SIPTransport(rawValue: Defaults.defaultTransport) ?? .udp
         stunServer = Defaults.stunServer
         stunServers = Defaults.stunServers
-        natMethod = .stun
+        natMethod = NATMethod(rawValue: Defaults.natMethod) ?? .stun
         natPinhole = Defaults.natPinhole
-        dtmfMode = .rfc2833
+        dtmfMode = DTMFMode(rawValue: Defaults.dtmfMode) ?? .rfc2833
         rtcpFeedback = Defaults.rtcpFeedback
         registerOnStartup = Defaults.registerOnStartup
-        appearanceMode = .auto
+        appearanceMode = AppearanceMode(rawValue: Defaults.appearanceMode) ?? .auto
         selectedRingtone = Defaults.selectedRingtone
     }
 }

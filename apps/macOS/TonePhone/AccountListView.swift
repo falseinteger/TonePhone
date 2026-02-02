@@ -128,15 +128,17 @@ struct AccountListView: View {
 
             if #available(macOS 14.0, *) {
                 SettingsLink {
-                    Image(systemName: "gearshape")
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
                 .help("Settings")
             } else {
                 Button {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
                 } label: {
-                    Image(systemName: "gearshape")
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
                 .help("Settings")

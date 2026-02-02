@@ -34,6 +34,7 @@ struct AccountsSettingsView: View {
             AccountSettingsDetailView(account: account) { updated in
                 AccountStore.shared.saveAccount(updated)
                 accounts = AccountStore.shared.loadAccounts()
+                NotificationCenter.default.post(name: .accountSettingsChanged, object: updated.id)
             }
             .frame(minWidth: 480, minHeight: 480)
         }

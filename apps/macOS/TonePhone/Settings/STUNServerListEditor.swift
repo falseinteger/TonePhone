@@ -56,7 +56,7 @@ struct STUNServerListEditor: View {
 
 #Preview("STUN Server List") {
     struct Wrapper: View {
-        @State var servers = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
+        @State private var servers = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
         var body: some View {
             STUNServerListEditor(servers: $servers)
                 .padding()

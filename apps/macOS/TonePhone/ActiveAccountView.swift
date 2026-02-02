@@ -66,7 +66,8 @@ struct ActiveAccountView: View {
             // Settings button
             if #available(macOS 14.0, *) {
                 SettingsLink {
-                    Image(systemName: "gearshape")
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -74,9 +75,10 @@ struct ActiveAccountView: View {
                 .help("Settings")
             } else {
                 Button {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
                 } label: {
-                    Image(systemName: "gearshape")
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

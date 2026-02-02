@@ -162,6 +162,7 @@ struct AccountSettingsDetailView: View {
                 Toggle("", isOn: isEnabled)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
+                    .accessibilityLabel(Text(label))
 
                 Text(label)
                     .font(.system(size: 13))
@@ -257,7 +258,8 @@ struct AccountSettingsDetailView: View {
 
     private func saveOverrides() {
         var updated = account
-        updated.stunServerOverride = useCustomStunServer ? stunServerOverride : nil
+        let trimmedStun = stunServerOverride.trimmingCharacters(in: .whitespaces)
+        updated.stunServerOverride = useCustomStunServer && !trimmedStun.isEmpty ? trimmedStun : nil
         updated.natMethodOverride = useCustomNatMethod ? natMethodOverride : nil
         updated.natPinholeOverride = useCustomNatPinhole ? natPinholeOverride : nil
         updated.dtmfModeOverride = useCustomDtmfMode ? dtmfModeOverride : nil

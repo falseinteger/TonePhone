@@ -87,9 +87,10 @@ struct RingtonePickerView: View {
                 playingID = ringtone.id
 
                 let duration = player?.duration ?? 2.0
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak player] in
-                    if player?.isPlaying == false {
-                        self.playingID = nil
+                let expectedID = ringtone.id
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                    if playingID == expectedID {
+                        playingID = nil
                     }
                 }
             } catch {
@@ -107,7 +108,7 @@ struct RingtonePickerView: View {
 
 #Preview("Ringtone Picker") {
     struct Wrapper: View {
-        @State var selected = "Ping.aiff"
+        @State private var selected = "Ping.aiff"
         var body: some View {
             RingtonePickerView(selectedRingtone: $selected)
                 .padding()

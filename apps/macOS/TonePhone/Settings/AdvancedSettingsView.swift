@@ -174,11 +174,20 @@ struct AdvancedSettingsView: View {
         panel.nameFieldStringValue = "tonephone-logs.txt"
         panel.allowedContentTypes = [.plainText]
 
-        if panel.runModal() == .OK, let url = panel.url {
-            try? FileManager.default.copyItem(
-                at: URL(fileURLWithPath: logPath),
-                to: url
-            )
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: URL(fileURLWithPath: logPath))
+            } else {
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: logPath), to: url)
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Export Failed"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
         }
     }
 }

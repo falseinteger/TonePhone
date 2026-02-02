@@ -99,6 +99,7 @@ struct AudioSettingsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedID.wrappedValue = device.id
+                    setAudioDevice(id: device.id, forInput: inputDevices.contains(where: { $0.id == device.id }))
                 }
             }
         }
@@ -113,6 +114,17 @@ struct AudioSettingsView: View {
         // Select defaults
         selectedOutputID = outputDevices.first(where: \.isDefault)?.id ?? 0
         selectedInputID = inputDevices.first(where: \.isDefault)?.id ?? 0
+    }
+
+    private func setAudioDevice(id: AudioDeviceID, forInput: Bool) {
+        var deviceID = id
+        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: forInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, size, &deviceID)
     }
 
     private func enumerateDevices(forInput: Bool) -> [AudioDeviceInfo] {

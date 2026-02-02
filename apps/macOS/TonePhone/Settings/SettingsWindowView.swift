@@ -9,6 +9,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let showAboutSettings = Notification.Name("showAboutSettings")
+    static let accountSettingsChanged = Notification.Name("accountSettingsChanged")
 }
 
 /// Settings category for sidebar navigation.

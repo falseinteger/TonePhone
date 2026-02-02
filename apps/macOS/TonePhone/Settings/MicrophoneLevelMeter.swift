@@ -16,17 +16,21 @@ final class MicrophoneLevelMonitor: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private var audioEngine: AVAudioEngine?
+    private var isStarting = false
 
     func startMonitoring() {
-        guard !isMonitoring else { return }
+        guard !isMonitoring, !isStarting else { return }
+        isStarting = true
 
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             Task { @MainActor in
+                guard let self else { return }
                 if granted {
-                    self?.setupAudioEngine()
+                    self.setupAudioEngine()
                 } else {
-                    self?.errorMessage = "Microphone access denied"
+                    self.errorMessage = "Microphone access denied"
                 }
+                self.isStarting = false
             }
         }
     }
@@ -47,18 +51,21 @@ final class MicrophoneLevelMonitor: ObservableObject {
 
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
                 guard let channelData = buffer.floatChannelData else { return }
-                let samples = channelData.pointee
                 let frameLength = Int(buffer.frameLength)
+                let channelCount = Int(buffer.format.channelCount)
+                guard frameLength > 0, channelCount > 0 else { return }
 
-                var sum: Float = 0
-                for i in 0..<frameLength {
-                    sum += samples[i] * samples[i]
+                var totalSum: Float = 0
+                for ch in 0..<channelCount {
+                    let samples = channelData[ch]
+                    for i in 0..<frameLength {
+                        totalSum += samples[i] * samples[i]
+                    }
                 }
-                let rms = sqrt(sum / Float(frameLength))
+                let rms = sqrt(totalSum / Float(frameLength * channelCount))
                 let scaledLevel = min(1.0, rms * 5.0)
 
                 Task { @MainActor in
-                    // Smooth the level display
                     self?.level = (self?.level ?? 0) * 0.3 + scaledLevel * 0.7
                 }
             }

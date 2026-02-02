@@ -42,7 +42,7 @@ struct AboutMenuItem: View {
         } else {
             Button("About TonePhone") {
                 NotificationCenter.default.post(name: .showAboutSettings, object: nil)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
             }
         }
     }
@@ -64,6 +64,12 @@ private struct AboutMenuItem14: View {
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    /// Opens the Settings window. Used as a typed selector target for macOS < 14.
+    @objc func openSettingsWindow(_ sender: Any?) {
+        // "showSettingsWindow:" is a private AppKit selector for opening the Settings scene
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 

@@ -234,6 +234,22 @@ final class AppViewModel: ObservableObject {
                 self?.handleEvent(event)
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .accountSettingsChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let self, let accountID = notification.object as? UUID else { return }
+                self.reregisterAccount(id: accountID)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Re-registers an account after its settings changed.
+    private func reregisterAccount(id: UUID) {
+        loadAccounts()
+        guard let account = accounts.first(where: { $0.id == id }),
+              let password = AccountStore.shared.getPassword(for: id) else { return }
+        registerAccountWithCore(account, password: password)
     }
 
     /// Handles incoming events from TonePhoneCore.
@@ -640,7 +656,7 @@ final class AppViewModel: ObservableObject {
         // Get settings from SettingsStore
         let settings = SettingsStore.shared
         let stunServer = settings.stunServer.isEmpty ? nil : settings.stunServer
-        let medianat = settings.natMethod.rawValue.isEmpty ? nil : settings.natMethod.rawValue
+        let medianat = settings.natMethod == .none ? nil : settings.natMethod.rawValue
 
         // Add new account to core
         do {
