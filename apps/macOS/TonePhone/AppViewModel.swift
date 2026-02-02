@@ -249,6 +249,22 @@ final class AppViewModel: ObservableObject {
                 self?.handleEvent(event)
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .accountSettingsChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let self, let accountID = notification.object as? UUID else { return }
+                self.reregisterAccount(id: accountID)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Re-registers an account after its settings changed.
+    private func reregisterAccount(id: UUID) {
+        loadAccounts()
+        guard let account = accounts.first(where: { $0.id == id }),
+              let password = AccountStore.shared.getPassword(for: id) else { return }
+        registerAccountWithCore(account, password: password)
     }
 
     /// Handles incoming events from TonePhoneCore.
@@ -655,6 +671,15 @@ final class AppViewModel: ObservableObject {
             }
         }
 
+        // Resolve per-account overrides, falling back to global settings
+        let settings = SettingsStore.shared
+        let resolvedStunServer = account.stunServerOverride ?? settings.stunServer
+        let resolvedNatMethod = account.natMethodOverride ?? settings.natMethod
+        let resolvedNatPinhole = account.natPinholeOverride ?? settings.natPinhole
+
+        let stunServer = resolvedStunServer.isEmpty ? nil : resolvedStunServer
+        let medianat = resolvedNatMethod == .none ? nil : resolvedNatMethod.rawValue
+
         // Add new account to core
         do {
             let bridgeID = try TonePhoneCore.shared.addAccount(
@@ -662,6 +687,9 @@ final class AppViewModel: ObservableObject {
                 password: password,
                 displayName: account.displayName.isEmpty ? nil : account.displayName,
                 transport: account.transport.rawValue,
+                stunServer: stunServer,
+                medianat: medianat,
+                natPinhole: resolvedNatPinhole,
                 registerImmediately: true
             )
             accountIDMapping[account.id] = bridgeID

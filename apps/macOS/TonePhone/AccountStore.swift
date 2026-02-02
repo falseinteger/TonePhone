@@ -36,6 +36,17 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     /// Whether to automatically connect on app launch (also makes this the default account).
     var autoLogin: Bool
 
+    // MARK: - Per-Account Overrides
+
+    /// Override the global STUN server for this account.
+    var stunServerOverride: String?
+    /// Override the global NAT method for this account.
+    var natMethodOverride: NATMethod?
+    /// Override the global NAT pinhole setting for this account.
+    var natPinholeOverride: Bool?
+    /// Override the global DTMF mode for this account.
+    var dtmfModeOverride: DTMFMode?
+
     /// Creates a new account with default values.
     init(
         id: UUID = UUID(),
@@ -43,7 +54,11 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         username: String = "",
         displayName: String = "",
         transport: SIPTransport = .udp,
-        autoLogin: Bool = false
+        autoLogin: Bool = false,
+        stunServerOverride: String? = nil,
+        natMethodOverride: NATMethod? = nil,
+        natPinholeOverride: Bool? = nil,
+        dtmfModeOverride: DTMFMode? = nil
     ) {
         self.id = id
         self.server = server
@@ -51,6 +66,10 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         self.displayName = displayName
         self.transport = transport
         self.autoLogin = autoLogin
+        self.stunServerOverride = stunServerOverride
+        self.natMethodOverride = natMethodOverride
+        self.natPinholeOverride = natPinholeOverride
+        self.dtmfModeOverride = dtmfModeOverride
     }
 
     /// Constructs the SIP URI from server and username.
@@ -66,6 +85,14 @@ struct SIPAccount: Codable, Identifiable, Equatable {
             return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
         }
         return String(name.prefix(2)).uppercased()
+    }
+
+    /// Whether this account has any overrides configured.
+    var hasOverrides: Bool {
+        stunServerOverride != nil ||
+        natMethodOverride != nil ||
+        natPinholeOverride != nil ||
+        dtmfModeOverride != nil
     }
 }
 

@@ -126,6 +126,24 @@ struct AccountListView: View {
             .buttonStyle(.borderless)
             .help("Add Account")
 
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
+            } else {
+                Button {
+                    NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
+            }
+
             Spacer()
 
             Text("\(viewModel.accounts.count) account\(viewModel.accounts.count == 1 ? "" : "s")")

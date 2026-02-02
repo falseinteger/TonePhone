@@ -28,7 +28,7 @@ struct AccountConfigView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var displayName: String = ""
-    @State private var transport: SIPTransport = .udp
+    @State private var transport: SIPTransport = SettingsStore.shared.defaultTransport
     @State private var autoLogin: Bool = false
 
     // Validation state

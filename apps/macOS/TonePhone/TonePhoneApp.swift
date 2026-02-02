@@ -21,6 +21,41 @@ struct TonePhoneApp: App {
         .commands {
             // Remove "New Window" command (Cmd+N)
             CommandGroup(replacing: .newItem) {}
+
+            // Override "About TonePhone" to open Settings on About tab
+            CommandGroup(replacing: .appInfo) {
+                AboutMenuItem()
+            }
+        }
+
+        Settings {
+            SettingsWindowView()
+        }
+    }
+}
+
+/// Menu item for "About TonePhone" that opens Settings on the About tab.
+struct AboutMenuItem: View {
+    var body: some View {
+        if #available(macOS 14.0, *) {
+            AboutMenuItem14()
+        } else {
+            Button("About TonePhone") {
+                NotificationCenter.default.post(name: .showAboutSettings, object: nil)
+                NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct AboutMenuItem14: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("About TonePhone") {
+            NotificationCenter.default.post(name: .showAboutSettings, object: nil)
+            openSettings()
         }
     }
 }
@@ -29,6 +64,12 @@ struct TonePhoneApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    /// Opens the Settings window. Used as a typed selector target for macOS < 14.
+    @objc func openSettingsWindow(_ sender: Any?) {
+        // "showSettingsWindow:" is a private AppKit selector for opening the Settings scene
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 

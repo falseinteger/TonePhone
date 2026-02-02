@@ -155,17 +155,19 @@ final class IncomingCallManager: NSObject, ObservableObject {
             return bundleURL
         }
 
-        // Fall back to system ringtone
-        let systemRingtones = [
-            "/System/Library/Sounds/Ping.aiff",
-            "/System/Library/Sounds/Glass.aiff",
-            "/System/Library/Sounds/Sosumi.aiff"
-        ]
+        // Use the user-selected ringtone from settings
+        let selectedRingtone = SettingsStore.shared.selectedRingtone
+        let selectedPath = "/System/Library/Sounds/\(selectedRingtone)"
+        if FileManager.default.fileExists(atPath: selectedPath) {
+            return URL(fileURLWithPath: selectedPath)
+        }
 
-        for path in systemRingtones {
-            let url = URL(fileURLWithPath: path)
+        // Fall back to other system sounds
+        let fallbacks = ["Ping.aiff", "Glass.aiff", "Sosumi.aiff"]
+        for name in fallbacks where name != selectedRingtone {
+            let path = "/System/Library/Sounds/\(name)"
             if FileManager.default.fileExists(atPath: path) {
-                return url
+                return URL(fileURLWithPath: path)
             }
         }
 
