@@ -671,10 +671,14 @@ final class AppViewModel: ObservableObject {
             }
         }
 
-        // Get settings from SettingsStore
+        // Resolve per-account overrides, falling back to global settings
         let settings = SettingsStore.shared
-        let stunServer = settings.stunServer.isEmpty ? nil : settings.stunServer
-        let medianat = settings.natMethod == .none ? nil : settings.natMethod.rawValue
+        let resolvedStunServer = account.stunServerOverride ?? settings.stunServer
+        let resolvedNatMethod = account.natMethodOverride ?? settings.natMethod
+        let resolvedNatPinhole = account.natPinholeOverride ?? settings.natPinhole
+
+        let stunServer = resolvedStunServer.isEmpty ? nil : resolvedStunServer
+        let medianat = resolvedNatMethod == .none ? nil : resolvedNatMethod.rawValue
 
         // Add new account to core
         do {
@@ -685,7 +689,7 @@ final class AppViewModel: ObservableObject {
                 transport: account.transport.rawValue,
                 stunServer: stunServer,
                 medianat: medianat,
-                natPinhole: settings.natPinhole,
+                natPinhole: resolvedNatPinhole,
                 registerImmediately: true
             )
             accountIDMapping[account.id] = bridgeID
