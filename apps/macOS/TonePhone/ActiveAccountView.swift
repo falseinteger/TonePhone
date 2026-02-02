@@ -63,6 +63,29 @@ struct ActiveAccountView: View {
 
             Spacer()
 
+            // Settings button
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+            } else {
+                Button {
+                    NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+            }
+
             // Disconnect button
             Button {
                 viewModel.unregisterAndGoBack()
