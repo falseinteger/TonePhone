@@ -49,6 +49,11 @@ final class MicrophoneLevelMonitor: ObservableObject {
             let inputNode = engine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
 
+            guard format.sampleRate > 0, format.channelCount > 0 else {
+                errorMessage = "No audio input device available"
+                return
+            }
+
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
                 guard let channelData = buffer.floatChannelData else { return }
                 let frameLength = Int(buffer.frameLength)

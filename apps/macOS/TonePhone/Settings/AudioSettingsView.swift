@@ -5,23 +5,15 @@
 //  Audio settings: input/output device selection, mic test, ringtone.
 //
 
-import AVFoundation
-import CoreAudio
 import SwiftUI
-
-/// Simple audio device info for display in settings.
-private struct AudioDeviceInfo: Identifiable {
-    let id: AudioDeviceID
-    let name: String
-    let isDefault: Bool
-}
 
 struct AudioSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
-    @State private var inputDevices: [AudioDeviceInfo] = []
-    @State private var outputDevices: [AudioDeviceInfo] = []
-    @State private var selectedInputID: AudioDeviceID = 0
-    @State private var selectedOutputID: AudioDeviceID = 0
+    @State private var inputDevices: [AudioDevice] = []
+    @State private var outputDevices: [AudioDevice] = []
+    @State private var selectedInputID: String = ""
+    @State private var selectedOutputID: String = ""
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -32,12 +24,12 @@ struct AudioSettingsView: View {
 
                 // Output
                 SettingsSection(title: "Output Device") {
-                    deviceList(devices: outputDevices, selectedID: $selectedOutputID)
+                    deviceList(devices: outputDevices, selectedID: $selectedOutputID, forInput: false)
                 }
 
                 // Input
                 SettingsSection(title: "Input Device") {
-                    deviceList(devices: inputDevices, selectedID: $selectedInputID)
+                    deviceList(devices: inputDevices, selectedID: $selectedInputID, forInput: true)
                     Divider().padding(.horizontal, 12)
 
                     SettingsRow(label: "Mic Test") {
@@ -52,6 +44,12 @@ struct AudioSettingsView: View {
                         .padding(.vertical, 8)
                 }
 
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+
                 Spacer()
             }
             .padding(24)
@@ -63,7 +61,7 @@ struct AudioSettingsView: View {
     // MARK: - Device List
 
     @ViewBuilder
-    private func deviceList(devices: [AudioDeviceInfo], selectedID: Binding<AudioDeviceID>) -> some View {
+    private func deviceList(devices: [AudioDevice], selectedID: Binding<String>, forInput: Bool) -> some View {
         if devices.isEmpty {
             Text("No devices found")
                 .font(.system(size: 13))
@@ -99,7 +97,7 @@ struct AudioSettingsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedID.wrappedValue = device.id
-                    setAudioDevice(id: device.id, forInput: inputDevices.contains(where: { $0.id == device.id }))
+                    setAudioDevice(device, forInput: forInput)
                 }
             }
         }
@@ -108,75 +106,26 @@ struct AudioSettingsView: View {
     // MARK: - Load Devices
 
     private func loadDevices() {
-        outputDevices = enumerateDevices(forInput: false)
-        inputDevices = enumerateDevices(forInput: true)
+        let core = TonePhoneCore.shared
+        outputDevices = core.getOutputDevices()
+        inputDevices = core.getInputDevices()
 
         // Select defaults
-        selectedOutputID = outputDevices.first(where: \.isDefault)?.id ?? 0
-        selectedInputID = inputDevices.first(where: \.isDefault)?.id ?? 0
+        selectedOutputID = outputDevices.first(where: \.isDefault)?.id ?? ""
+        selectedInputID = inputDevices.first(where: \.isDefault)?.id ?? ""
     }
 
-    private func setAudioDevice(id: AudioDeviceID, forInput: Bool) {
-        var deviceID = id
-        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var addr = AudioObjectPropertyAddress(
-            mSelector: forInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, size, &deviceID)
-    }
-
-    private func enumerateDevices(forInput: Bool) -> [AudioDeviceInfo] {
-        // Get default device
-        var defaultID = AudioDeviceID()
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var addr = AudioObjectPropertyAddress(
-            mSelector: forInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &defaultID)
-
-        // Get all devices
-        addr.mSelector = kAudioHardwarePropertyDevices
-        var listSize: UInt32 = 0
-        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &listSize)
-
-        let count = Int(listSize) / MemoryLayout<AudioDeviceID>.size
-        var ids = [AudioDeviceID](repeating: 0, count: count)
-        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &listSize, &ids)
-
-        var result: [AudioDeviceInfo] = []
-        for deviceID in ids {
-            // Check if device has input/output streams
-            var streamAddr = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyStreams,
-                mScope: forInput ? kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var streamSize: UInt32 = 0
-            AudioObjectGetPropertyDataSize(deviceID, &streamAddr, 0, nil, &streamSize)
-            guard streamSize > 0 else { continue }
-
-            // Get name
-            var nameAddr = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceNameCFString,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var cfName: CFString = "" as CFString
-            var nameSize = UInt32(MemoryLayout<CFString>.size)
-            AudioObjectGetPropertyData(deviceID, &nameAddr, 0, nil, &nameSize, &cfName)
-
-            result.append(AudioDeviceInfo(
-                id: deviceID,
-                name: cfName as String,
-                isDefault: deviceID == defaultID
-            ))
+    private func setAudioDevice(_ device: AudioDevice, forInput: Bool) {
+        errorMessage = nil
+        do {
+            if forInput {
+                try TonePhoneCore.shared.setInputDevice(device)
+            } else {
+                try TonePhoneCore.shared.setOutputDevice(device)
+            }
+        } catch {
+            errorMessage = "Failed to set \(forInput ? "input" : "output") device: \(error.localizedDescription)"
         }
-
-        return result.sorted { $0.isDefault && !$1.isDefault }
     }
 }
 

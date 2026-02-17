@@ -177,11 +177,11 @@ struct AdvancedSettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
+            let source = URL(fileURLWithPath: logPath)
             if FileManager.default.fileExists(atPath: url.path) {
-                _ = try FileManager.default.replaceItemAt(url, withItemAt: URL(fileURLWithPath: logPath))
-            } else {
-                try FileManager.default.copyItem(at: URL(fileURLWithPath: logPath), to: url)
+                try FileManager.default.removeItem(at: url)
             }
+            try FileManager.default.copyItem(at: source, to: url)
         } catch {
             let alert = NSAlert()
             alert.messageText = "Export Failed"
