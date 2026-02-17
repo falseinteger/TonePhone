@@ -228,11 +228,11 @@ struct AccountRowView: View {
 // MARK: - Preview
 
 #Preview("With Accounts") {
-    AccountListView(viewModel: AppViewModel())
+    AccountListView(viewModel: AppViewModel.shared)
         .frame(width: 380, height: 500)
 }
 
 #Preview("Empty") {
-    AccountListView(viewModel: AppViewModel())
+    AccountListView(viewModel: AppViewModel.shared)
         .frame(width: 380, height: 500)
 }

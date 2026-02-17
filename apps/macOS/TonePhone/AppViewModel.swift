@@ -198,7 +198,7 @@ final class AppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     /// Creates the view model and subscribes to TonePhoneCore events.
-    init() {
+    private init() {
         subscribeToEvents()
         startCore()
         loadAccounts()
@@ -263,6 +263,10 @@ final class AppViewModel: ObservableObject {
 
     /// Re-registers an account after its settings changed.
     private func reregisterAccount(id: UUID) {
+        // Skip re-registration if this account is currently in the connecting flow
+        // to avoid disrupting the in-flight connection with stale bridge IDs.
+        if connectingAccount?.id == id { return }
+
         loadAccounts()
         guard let account = accounts.first(where: { $0.id == id }),
               let password = AccountStore.shared.getPassword(for: id) else { return }

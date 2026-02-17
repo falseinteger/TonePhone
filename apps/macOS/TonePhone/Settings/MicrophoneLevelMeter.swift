@@ -88,6 +88,8 @@ final class MicrophoneLevelMonitor: ObservableObject {
         } catch {
             inputNode.removeTap(onBus: 0)
             engine.stop()
+            audioEngine = nil
+            isMonitoring = false
             errorMessage = "Failed to start audio: \(error.localizedDescription)"
         }
     }
@@ -120,6 +122,8 @@ struct MicrophoneLevelMeter: View {
                 }
                 .frame(height: 8)
                 .frame(maxWidth: 200)
+                .accessibilityLabel("Microphone level")
+                .accessibilityValue("\(Int(monitor.level * 100)) percent")
 
                 Button(monitor.isMonitoring ? "Stop" : "Test Mic") {
                     if monitor.isMonitoring {
@@ -129,6 +133,7 @@ struct MicrophoneLevelMeter: View {
                     }
                 }
                 .buttonStyle(.bordered)
+                .accessibilityHint(monitor.isMonitoring ? "Stop microphone test" : "Start microphone test")
             }
 
             if let error = monitor.errorMessage {

@@ -58,6 +58,30 @@ struct AudioSettingsView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
         } else {
+            // System Default option
+            let isDefaultSelected = selected == nil
+            HStack(spacing: 10) {
+                Image(systemName: isDefaultSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isDefaultSelected ? .accentColor : .secondary)
+                Text("System Default")
+                    .font(.system(size: 13))
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isDefaultSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if forInput {
+                    viewModel.selectInputDevice(nil)
+                } else {
+                    viewModel.selectOutputDevice(nil)
+                }
+            }
+
             ForEach(devices) { device in
                 let isSelected = device.id == selected?.id
                 HStack(spacing: 10) {
