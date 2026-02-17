@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AdvancedSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
+    @State private var showResetConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -87,12 +88,20 @@ struct AdvancedSettingsView: View {
                 HStack {
                     Spacer()
                     Button("Reset All Settings to Defaults") {
-                        settings.resetToDefaults()
+                        showResetConfirmation = true
                     }
                     .foregroundColor(.secondary)
                     Spacer()
                 }
                 .padding(.top, 8)
+                .alert("Reset All Settings?", isPresented: $showResetConfirmation) {
+                    Button("Reset", role: .destructive) {
+                        settings.resetToDefaults()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This will restore all settings to their default values. This action cannot be undone.")
+                }
 
                 Spacer()
             }

@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension Notification.Name {
-    static let showAboutSettings = Notification.Name("showAboutSettings")
-    static let accountSettingsChanged = Notification.Name("accountSettingsChanged")
+    static let showAboutSettings = Notification.Name("com.tonephone.showAboutSettings")
+    static let accountSettingsChanged = Notification.Name("com.tonephone.accountSettingsChanged")
 }
 
 /// Settings category for sidebar navigation.

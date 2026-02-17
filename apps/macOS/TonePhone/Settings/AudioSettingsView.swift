@@ -9,11 +9,7 @@ import SwiftUI
 
 struct AudioSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
-    @State private var inputDevices: [AudioDevice] = []
-    @State private var outputDevices: [AudioDevice] = []
-    @State private var selectedInputID: String = ""
-    @State private var selectedOutputID: String = ""
-    @State private var errorMessage: String?
+    @ObservedObject private var viewModel = AppViewModel.shared
 
     var body: some View {
         ScrollView {
@@ -24,12 +20,12 @@ struct AudioSettingsView: View {
 
                 // Output
                 SettingsSection(title: "Output Device") {
-                    deviceList(devices: outputDevices, selectedID: $selectedOutputID, forInput: false)
+                    deviceList(devices: viewModel.outputDevices, selected: viewModel.selectedOutputDevice, forInput: false)
                 }
 
                 // Input
                 SettingsSection(title: "Input Device") {
-                    deviceList(devices: inputDevices, selectedID: $selectedInputID, forInput: true)
+                    deviceList(devices: viewModel.inputDevices, selected: viewModel.selectedInputDevice, forInput: true)
                     Divider().padding(.horizontal, 12)
 
                     SettingsRow(label: "Mic Test") {
@@ -44,24 +40,17 @@ struct AudioSettingsView: View {
                         .padding(.vertical, 8)
                 }
 
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.system(size: 11))
-                        .foregroundColor(.red)
-                }
-
                 Spacer()
             }
             .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { loadDevices() }
     }
 
     // MARK: - Device List
 
     @ViewBuilder
-    private func deviceList(devices: [AudioDevice], selectedID: Binding<String>, forInput: Bool) -> some View {
+    private func deviceList(devices: [AudioDevice], selected: AudioDevice?, forInput: Bool) -> some View {
         if devices.isEmpty {
             Text("No devices found")
                 .font(.system(size: 13))
@@ -70,7 +59,7 @@ struct AudioSettingsView: View {
                 .padding(.vertical, 8)
         } else {
             ForEach(devices) { device in
-                let isSelected = device.id == selectedID.wrappedValue
+                let isSelected = device.id == selected?.id
                 HStack(spacing: 10) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(isSelected ? .accentColor : .secondary)
@@ -96,35 +85,13 @@ struct AudioSettingsView: View {
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    selectedID.wrappedValue = device.id
-                    setAudioDevice(device, forInput: forInput)
+                    if forInput {
+                        viewModel.selectInputDevice(device)
+                    } else {
+                        viewModel.selectOutputDevice(device)
+                    }
                 }
             }
-        }
-    }
-
-    // MARK: - Load Devices
-
-    private func loadDevices() {
-        let core = TonePhoneCore.shared
-        outputDevices = core.getOutputDevices()
-        inputDevices = core.getInputDevices()
-
-        // Select defaults
-        selectedOutputID = outputDevices.first(where: \.isDefault)?.id ?? ""
-        selectedInputID = inputDevices.first(where: \.isDefault)?.id ?? ""
-    }
-
-    private func setAudioDevice(_ device: AudioDevice, forInput: Bool) {
-        errorMessage = nil
-        do {
-            if forInput {
-                try TonePhoneCore.shared.setInputDevice(device)
-            } else {
-                try TonePhoneCore.shared.setOutputDevice(device)
-            }
-        } catch {
-            errorMessage = "Failed to set \(forInput ? "input" : "output") device: \(error.localizedDescription)"
         }
     }
 }

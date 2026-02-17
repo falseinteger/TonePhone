@@ -17,14 +17,19 @@ final class MicrophoneLevelMonitor: ObservableObject {
 
     private var audioEngine: AVAudioEngine?
     private var isStarting = false
+    private var isCancelled = false
 
     func startMonitoring() {
         guard !isMonitoring, !isStarting else { return }
         isStarting = true
+        isCancelled = false
 
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, !self.isCancelled else {
+                    self?.isStarting = false
+                    return
+                }
                 if granted {
                     self.setupAudioEngine()
                 } else {
@@ -36,6 +41,7 @@ final class MicrophoneLevelMonitor: ObservableObject {
     }
 
     func stopMonitoring() {
+        isCancelled = true
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
@@ -44,42 +50,44 @@ final class MicrophoneLevelMonitor: ObservableObject {
     }
 
     private func setupAudioEngine() {
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            errorMessage = "No audio input device available"
+            return
+        }
+
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let channelData = buffer.floatChannelData else { return }
+            let frameLength = Int(buffer.frameLength)
+            let channelCount = Int(buffer.format.channelCount)
+            guard frameLength > 0, channelCount > 0 else { return }
+
+            var totalSum: Float = 0
+            for ch in 0..<channelCount {
+                let samples = channelData[ch]
+                for i in 0..<frameLength {
+                    totalSum += samples[i] * samples[i]
+                }
+            }
+            let rms = sqrt(totalSum / Float(frameLength * channelCount))
+            let scaledLevel = min(1.0, rms * 5.0)
+
+            Task { @MainActor in
+                self?.level = (self?.level ?? 0) * 0.3 + scaledLevel * 0.7
+            }
+        }
+
         do {
-            let engine = AVAudioEngine()
-            let inputNode = engine.inputNode
-            let format = inputNode.outputFormat(forBus: 0)
-
-            guard format.sampleRate > 0, format.channelCount > 0 else {
-                errorMessage = "No audio input device available"
-                return
-            }
-
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                guard let channelData = buffer.floatChannelData else { return }
-                let frameLength = Int(buffer.frameLength)
-                let channelCount = Int(buffer.format.channelCount)
-                guard frameLength > 0, channelCount > 0 else { return }
-
-                var totalSum: Float = 0
-                for ch in 0..<channelCount {
-                    let samples = channelData[ch]
-                    for i in 0..<frameLength {
-                        totalSum += samples[i] * samples[i]
-                    }
-                }
-                let rms = sqrt(totalSum / Float(frameLength * channelCount))
-                let scaledLevel = min(1.0, rms * 5.0)
-
-                Task { @MainActor in
-                    self?.level = (self?.level ?? 0) * 0.3 + scaledLevel * 0.7
-                }
-            }
-
             try engine.start()
             audioEngine = engine
             isMonitoring = true
             errorMessage = nil
         } catch {
+            inputNode.removeTap(onBus: 0)
+            engine.stop()
             errorMessage = "Failed to start audio: \(error.localizedDescription)"
         }
     }

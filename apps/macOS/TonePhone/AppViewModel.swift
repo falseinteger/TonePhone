@@ -85,6 +85,8 @@ enum UICallState: Equatable {
 /// Also manages account configuration and persistence.
 @MainActor
 final class AppViewModel: ObservableObject {
+    /// Shared singleton instance for cross-window access (e.g., Settings).
+    static let shared = AppViewModel()
     /// Current screen being displayed.
     @Published private(set) var currentScreen: AppScreen = .accountList
 
