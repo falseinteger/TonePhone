@@ -220,13 +220,16 @@ struct ActiveAccountView: View {
             return "sip:\(cleaned)"
         }
 
-        // Otherwise, assume it's a number and use the account's server
+        // Normalize phone-like input to E.164 (extensions and star codes pass through unchanged)
+        let normalized = PhoneNumberService.normalizeToE164(cleaned)
+
+        // Use the account's server if available
         if let account = viewModel.activeAccount {
-            return "sip:\(cleaned)@\(account.server)"
+            return "sip:\(normalized)@\(account.server)"
         }
 
         // Fallback: just prepend sip:
-        return "sip:\(cleaned)"
+        return "sip:\(normalized)"
     }
 }
 
