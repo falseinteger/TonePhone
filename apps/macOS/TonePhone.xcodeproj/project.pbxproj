@@ -157,6 +157,7 @@
 			);
 			name = TonePhone;
 			packageProductDependencies = (
+				F0000006DDDDDDDD00000001 /* PhoneNumberKit */,
 			);
 			productName = TonePhone;
 			productReference = AB6132BD2F257E860061E7F9 /* TonePhone.app */;
@@ -187,6 +188,9 @@
 			);
 			mainGroup = AB6132B42F257E860061E7F9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F0000005DDDDDDDD00000001 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */,
+			);
 			productRefGroup = AB6132BE2F257E860061E7F9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -439,6 +443,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F0000005DDDDDDDD00000001 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/marmelroy/PhoneNumberKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F0000006DDDDDDDD00000001 /* PhoneNumberKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0000005DDDDDDDD00000001 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */;
+			productName = PhoneNumberKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AB6132B52F257E860061E7F9 /* Project object */;
 }
