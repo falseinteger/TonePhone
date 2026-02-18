@@ -85,6 +85,8 @@ enum UICallState: Equatable {
 /// Also manages account configuration and persistence.
 @MainActor
 final class AppViewModel: ObservableObject {
+    /// Shared singleton instance for cross-window access (e.g., Settings).
+    static let shared = AppViewModel()
     /// Current screen being displayed.
     @Published private(set) var currentScreen: AppScreen = .accountList
 
@@ -196,7 +198,7 @@ final class AppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     /// Creates the view model and subscribes to TonePhoneCore events.
-    init() {
+    private init() {
         subscribeToEvents()
         startCore()
         loadAccounts()
@@ -261,6 +263,10 @@ final class AppViewModel: ObservableObject {
 
     /// Re-registers an account after its settings changed.
     private func reregisterAccount(id: UUID) {
+        // Skip re-registration if this account is currently in the connecting flow
+        // to avoid disrupting the in-flight connection with stale bridge IDs.
+        if connectingAccount?.id == id { return }
+
         loadAccounts()
         guard let account = accounts.first(where: { $0.id == id }),
               let password = AccountStore.shared.getPassword(for: id) else { return }
@@ -675,10 +681,13 @@ final class AppViewModel: ObservableObject {
         let settings = SettingsStore.shared
         let resolvedStunServer = account.stunServerOverride ?? settings.stunServer
         let resolvedNatMethod = account.natMethodOverride ?? settings.natMethod
-        let resolvedNatPinhole = account.natPinholeOverride ?? settings.natPinhole
+        // Note: dtmfModeOverride is stored per-account but not yet applied here
+        // because the bridge addAccount API has no DTMF mode parameter.
+        // DTMF mode is currently a global setting applied at the core level.
 
         let stunServer = resolvedStunServer.isEmpty ? nil : resolvedStunServer
         let medianat = resolvedNatMethod == .none ? nil : resolvedNatMethod.rawValue
+        let natPinhole: Bool? = account.natPinholeOverride
 
         // Add new account to core
         do {
@@ -689,7 +698,7 @@ final class AppViewModel: ObservableObject {
                 transport: account.transport.rawValue,
                 stunServer: stunServer,
                 medianat: medianat,
-                natPinhole: resolvedNatPinhole,
+                natPinhole: natPinhole,
                 registerImmediately: true
             )
             accountIDMapping[account.id] = bridgeID

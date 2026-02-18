@@ -41,7 +41,7 @@ struct AboutMenuItem: View {
             AboutMenuItem14()
         } else {
             Button("About TonePhone") {
-                NotificationCenter.default.post(name: .showAboutSettings, object: nil)
+                SettingsWindowView.pendingCategory = .about
                 NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
             }
         }
@@ -54,7 +54,7 @@ private struct AboutMenuItem14: View {
 
     var body: some View {
         Button("About TonePhone") {
-            NotificationCenter.default.post(name: .showAboutSettings, object: nil)
+            SettingsWindowView.pendingCategory = .about
             openSettings()
         }
     }

@@ -273,7 +273,11 @@ struct AccountConfigView: View {
             username: trimmedUsername,
             displayName: displayName.trimmingCharacters(in: .whitespaces),
             transport: transport,
-            autoLogin: autoLogin
+            autoLogin: autoLogin,
+            stunServerOverride: existingAccount?.stunServerOverride,
+            natMethodOverride: existingAccount?.natMethodOverride,
+            natPinholeOverride: existingAccount?.natPinholeOverride,
+            dtmfModeOverride: existingAccount?.dtmfModeOverride
         )
 
         onSave?(account, password)

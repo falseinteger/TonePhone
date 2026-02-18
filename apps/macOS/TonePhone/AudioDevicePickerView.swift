@@ -220,7 +220,7 @@ private struct DeviceRow: View {
 
 #Preview("Audio Device Picker") {
     AudioDevicePickerView(
-        viewModel: AppViewModel(),
+        viewModel: AppViewModel.shared,
         isPresented: .constant(true)
     )
     .frame(height: 300)

@@ -463,11 +463,11 @@ private struct DTMFKey: View {
 // MARK: - Preview
 
 #Preview("Call") {
-    ActiveCallView(viewModel: AppViewModel())
+    ActiveCallView(viewModel: AppViewModel.shared)
         .frame(width: 300, height: 340)
 }
 
 #Preview("Compact") {
-    ActiveCallView(viewModel: AppViewModel())
+    ActiveCallView(viewModel: AppViewModel.shared)
         .frame(width: 220, height: 340)
 }

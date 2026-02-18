@@ -577,7 +577,7 @@ public final class TonePhoneCore {
         transport: String? = nil,
         stunServer: String? = "stun:stun.l.google.com:19302",
         medianat: String? = "stun",
-        natPinhole: Bool = true,
+        natPinhole: Bool? = nil,
         registerImmediately: Bool = true
     ) throws -> AccountID {
         // Collect all optional strings that need to live through the C call
@@ -594,7 +594,7 @@ public final class TonePhoneCore {
                 config.sip_uri = sipURIPtr
                 config.password = passwordPtr
                 config.register_on_add = registerImmediately
-                config.nat_pinhole = natPinhole
+                config.nat_pinhole = natPinhole ?? true
                 config.display_name = nil
                 config.auth_user = nil
                 config.outbound_proxy = nil
