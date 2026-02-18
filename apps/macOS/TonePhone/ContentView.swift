@@ -12,7 +12,7 @@ import SwiftUI
 /// Manages the navigation between different screens based on app state.
 /// Follows macOS Human Interface Guidelines for window structure.
 struct ContentView: View {
-    @StateObject private var viewModel = AppViewModel()
+    @ObservedObject private var viewModel = AppViewModel.shared
 
     var body: some View {
         content

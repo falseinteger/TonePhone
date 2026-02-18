@@ -41,6 +41,7 @@ struct RingtonePickerView: View {
                     }
                     .buttonStyle(.borderless)
                     .foregroundColor(.accentColor)
+                    .accessibilityLabel(playingID == ringtone.id ? "Stop \(ringtone.name)" : "Preview \(ringtone.name)")
                 }
                 .padding(.vertical, 3)
                 .padding(.horizontal, 8)

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AdvancedSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
+    @State private var showResetConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -87,12 +88,20 @@ struct AdvancedSettingsView: View {
                 HStack {
                     Spacer()
                     Button("Reset All Settings to Defaults") {
-                        settings.resetToDefaults()
+                        showResetConfirmation = true
                     }
                     .foregroundColor(.secondary)
                     Spacer()
                 }
                 .padding(.top, 8)
+                .alert("Reset All Settings?", isPresented: $showResetConfirmation) {
+                    Button("Reset", role: .destructive) {
+                        settings.resetToDefaults()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This will restore all settings to their default values. This action cannot be undone.")
+                }
 
                 Spacer()
             }
@@ -177,11 +186,11 @@ struct AdvancedSettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
+            let source = URL(fileURLWithPath: logPath)
             if FileManager.default.fileExists(atPath: url.path) {
-                _ = try FileManager.default.replaceItemAt(url, withItemAt: URL(fileURLWithPath: logPath))
-            } else {
-                try FileManager.default.copyItem(at: URL(fileURLWithPath: logPath), to: url)
+                try FileManager.default.removeItem(at: url)
             }
+            try FileManager.default.copyItem(at: source, to: url)
         } catch {
             let alert = NSAlert()
             alert.messageText = "Export Failed"

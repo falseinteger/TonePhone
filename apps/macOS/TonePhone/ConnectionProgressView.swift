@@ -207,5 +207,5 @@ struct ConnectionProgressView: View {
 }
 
 #Preview("Connecting") {
-    ConnectionProgressView(viewModel: AppViewModel())
+    ConnectionProgressView(viewModel: AppViewModel.shared)
 }

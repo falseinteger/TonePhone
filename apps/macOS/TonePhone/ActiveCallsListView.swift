@@ -449,11 +449,11 @@ private struct CallRowView: View {
 // MARK: - Preview
 
 #Preview("Active Calls List") {
-    ActiveCallsListView(viewModel: AppViewModel())
+    ActiveCallsListView(viewModel: AppViewModel.shared)
         .frame(width: 320, height: 300)
 }
 
 #Preview("Empty State") {
-    ActiveCallsListView(viewModel: AppViewModel())
+    ActiveCallsListView(viewModel: AppViewModel.shared)
         .frame(width: 320, height: 200)
 }

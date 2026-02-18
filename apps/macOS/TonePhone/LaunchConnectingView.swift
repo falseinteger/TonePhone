@@ -108,6 +108,6 @@ struct LaunchConnectingView: View {
 }
 
 #Preview {
-    LaunchConnectingView(viewModel: AppViewModel())
+    LaunchConnectingView(viewModel: AppViewModel.shared)
         .frame(width: 380, height: 500)
 }

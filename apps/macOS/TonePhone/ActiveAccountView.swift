@@ -231,6 +231,6 @@ struct ActiveAccountView: View {
 }
 
 #Preview {
-    ActiveAccountView(viewModel: AppViewModel())
+    ActiveAccountView(viewModel: AppViewModel.shared)
         .frame(width: 300, height: 480)
 }

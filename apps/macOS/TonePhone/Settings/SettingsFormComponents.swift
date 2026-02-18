@@ -84,6 +84,7 @@ struct SettingsToggle: View {
             Toggle("", isOn: $isOn)
                 .toggleStyle(.switch)
                 .labelsHidden()
+                .accessibilityLabel(label)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

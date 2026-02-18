@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension Notification.Name {
-    static let showAboutSettings = Notification.Name("showAboutSettings")
-    static let accountSettingsChanged = Notification.Name("accountSettingsChanged")
+    static let showAboutSettings = Notification.Name("com.tonephone.showAboutSettings")
+    static let accountSettingsChanged = Notification.Name("com.tonephone.accountSettingsChanged")
 }
 
 /// Settings category for sidebar navigation.
@@ -48,6 +48,9 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
 /// Main settings window view with Apple System Settings style sidebar navigation.
 struct SettingsWindowView: View {
+    /// Pending category to select when the window appears (set before opening).
+    static var pendingCategory: SettingsCategory?
+
     @State private var selectedCategory: SettingsCategory? = .general
 
     var body: some View {
@@ -60,6 +63,12 @@ struct SettingsWindowView: View {
         .frame(minWidth: 650, minHeight: 450)
         .frame(idealWidth: 750, idealHeight: 550)
         .toolbar(.hidden)
+        .onAppear {
+            if let pending = Self.pendingCategory {
+                selectedCategory = pending
+                Self.pendingCategory = nil
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showAboutSettings)) { _ in
             selectedCategory = .about
         }

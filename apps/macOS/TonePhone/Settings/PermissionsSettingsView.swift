@@ -150,6 +150,7 @@ struct PermissionsSettingsView: View {
 
     // MARK: - Check
 
+    @MainActor
     private func checkPermissions() async {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: micStatus = .granted
