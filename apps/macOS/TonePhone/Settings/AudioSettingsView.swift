@@ -45,6 +45,9 @@ struct AudioSettingsView: View {
             .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            viewModel.refreshAudioDevices()
+        }
     }
 
     // MARK: - Device List

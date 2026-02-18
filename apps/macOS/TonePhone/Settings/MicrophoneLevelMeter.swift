@@ -42,6 +42,7 @@ final class MicrophoneLevelMonitor: ObservableObject {
 
     func stopMonitoring() {
         isCancelled = true
+        isStarting = false
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
