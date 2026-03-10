@@ -100,6 +100,7 @@ final class SettingsStore: ObservableObject {
         static let registerOnStartup = "settings.registerOnStartup"
         static let appearanceMode = "settings.appearanceMode"
         static let selectedRingtone = "settings.selectedRingtone"
+        static let phoneNumberRegion = "settings.phoneNumberRegion"
     }
 
     // MARK: - Default Values
@@ -116,6 +117,7 @@ final class SettingsStore: ObservableObject {
         static let registerOnStartup = true
         static let appearanceMode = "auto"
         static let selectedRingtone = "Ping.aiff"
+        static let phoneNumberRegion = ""  // Empty means use system locale
     }
 
     // MARK: - Published Properties
@@ -203,6 +205,13 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Phone number region code for formatting (e.g. "US", "GB"). Empty means system locale.
+    @Published var phoneNumberRegion: String {
+        didSet {
+            defaults.set(phoneNumberRegion, forKey: Keys.phoneNumberRegion)
+        }
+    }
+
     // MARK: - Initialization
 
     private init() {
@@ -252,6 +261,7 @@ final class SettingsStore: ObservableObject {
         self.appearanceMode = AppearanceMode(rawValue: appearanceModeString) ?? .auto
 
         self.selectedRingtone = defaults.string(forKey: Keys.selectedRingtone) ?? Defaults.selectedRingtone
+        self.phoneNumberRegion = defaults.string(forKey: Keys.phoneNumberRegion) ?? Defaults.phoneNumberRegion
 
         // Apply settings on init
         applyLogLevel()
@@ -283,5 +293,6 @@ final class SettingsStore: ObservableObject {
         registerOnStartup = Defaults.registerOnStartup
         appearanceMode = AppearanceMode(rawValue: Defaults.appearanceMode) ?? .auto
         selectedRingtone = Defaults.selectedRingtone
+        phoneNumberRegion = Defaults.phoneNumberRegion
     }
 }

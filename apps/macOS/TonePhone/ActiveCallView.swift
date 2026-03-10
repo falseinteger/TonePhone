@@ -266,7 +266,8 @@ struct ActiveCallView: View {
     }
 
     private var displayName: String {
-        viewModel.remotePartyName ?? viewModel.remotePartyURI ?? "Unknown"
+        let raw = viewModel.remotePartyName ?? viewModel.remotePartyURI ?? "Unknown"
+        return PhoneNumberService.formatForDisplay(raw)
     }
 
     private var initials: String {
