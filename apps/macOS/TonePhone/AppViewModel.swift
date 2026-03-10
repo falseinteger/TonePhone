@@ -534,19 +534,22 @@ final class AppViewModel: ObservableObject {
             duration = 0
         }
 
-        // Extract a clean, dialable URI from the raw remote URI
+        // Extract a clean user@domain from the raw remote URI
         let rawURI = callInfo.remoteURI ?? "Unknown"
         let dialableURI: String
+        var extracted = rawURI
         // Handle "Display Name" <sip:user@domain> format
         if let angleBracketStart = rawURI.firstIndex(of: "<"),
            let angleBracketEnd = rawURI.firstIndex(of: ">") {
-            dialableURI = String(rawURI[rawURI.index(after: angleBracketStart)..<angleBracketEnd])
-        } else if rawURI.lowercased().hasPrefix("sip:") {
-            // Extract user@domain from sip:user@domain
-            let withoutScheme = String(rawURI.dropFirst(4))
-            dialableURI = withoutScheme
+            extracted = String(rawURI[rawURI.index(after: angleBracketStart)..<angleBracketEnd])
+        }
+        // Strip sip:/sips: scheme for consistent user@domain format
+        if extracted.lowercased().hasPrefix("sips:") {
+            dialableURI = String(extracted.dropFirst(5))
+        } else if extracted.lowercased().hasPrefix("sip:") {
+            dialableURI = String(extracted.dropFirst(4))
         } else {
-            dialableURI = rawURI
+            dialableURI = extracted
         }
 
         let record = CallRecord(
