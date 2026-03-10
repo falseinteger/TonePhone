@@ -25,6 +25,26 @@ struct DialpadView: View {
         input.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Binding that displays formatted input while storing raw dial characters.
+    private var formattedBinding: Binding<String> {
+        Binding(
+            get: { PhoneNumberService.formatPartial(input) },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Preserve SIP URIs and address input as-is
+                if trimmed.lowercased().hasPrefix("sip:") ||
+                    trimmed.lowercased().hasPrefix("sips:") ||
+                    trimmed.contains("@") ||
+                    trimmed.contains(where: { $0.isLetter }) {
+                    input = newValue
+                } else {
+                    // Extract only dial-valid characters from phone-like input
+                    input = String(newValue.filter { "0123456789+*#".contains($0) })
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 8)
@@ -54,7 +74,7 @@ struct DialpadView: View {
 
     private var inputField: some View {
         HStack(spacing: 4) {
-            TextField("Enter number or address", text: $input)
+            TextField("Enter number or address", text: formattedBinding)
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
                 .focused($isInputFocused)

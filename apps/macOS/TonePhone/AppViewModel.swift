@@ -126,6 +126,8 @@ final class AppViewModel: ObservableObject {
         var isOnHold: Bool = false
         var startTime: Date?
         var isOutgoing: Bool = false
+        /// The account that owns this call (for history recording).
+        var ownerAccountID: UUID?
     }
 
     /// All active calls tracked by ID.
@@ -340,6 +342,7 @@ final class AppViewModel: ObservableObject {
         case .outgoing:
             callInfo.state = .outgoing
             callInfo.isOutgoing = true
+            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
             // Make this the displayed call
             activeCallID = callID
@@ -352,6 +355,7 @@ final class AppViewModel: ObservableObject {
             callInfo.state = .incoming(remoteURI: remoteURI)
             callInfo.remoteURI = remoteURI
             callInfo.remoteName = parseDisplayName(from: remoteURI)
+            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
             // Make this the displayed call
             activeCallID = callID
@@ -376,7 +380,9 @@ final class AppViewModel: ObservableObject {
         case .established:
             callInfo.state = .established
             callInfo.isOnHold = false
-            callInfo.startTime = Date()
+            if callInfo.startTime == nil {
+                callInfo.startTime = Date()
+            }
             activeCalls[callID] = callInfo
             if activeCallID == callID {
                 callState = .established
@@ -404,6 +410,8 @@ final class AppViewModel: ObservableObject {
                 callState = .ended(reason: reason)
                 stopCallDurationTimer()
             }
+            // Record in call history
+            recordCallHistory(callInfo)
             scheduleCallCleanup(callID: callID, delay: 1.5)
         }
     }
@@ -508,6 +516,56 @@ final class AppViewModel: ObservableObject {
         }
 
         return uri
+    }
+
+    /// Records a completed call in the call history.
+    private func recordCallHistory(_ callInfo: CallInfo) {
+        guard let accountID = callInfo.ownerAccountID ?? activeAccount?.id else { return }
+
+        let direction: CallDirection
+        if callInfo.isOutgoing {
+            direction = .outbound
+        } else if callInfo.startTime != nil {
+            direction = .inbound
+        } else {
+            direction = .missed
+        }
+
+        let duration: TimeInterval
+        if let start = callInfo.startTime {
+            duration = Date().timeIntervalSince(start)
+        } else {
+            duration = 0
+        }
+
+        // Extract a clean user@domain from the raw remote URI
+        let rawURI = callInfo.remoteURI ?? "Unknown"
+        let dialableURI: String
+        var extracted = rawURI
+        // Handle "Display Name" <sip:user@domain> format
+        if let angleBracketStart = rawURI.firstIndex(of: "<"),
+           let angleBracketEnd = rawURI.firstIndex(of: ">") {
+            extracted = String(rawURI[rawURI.index(after: angleBracketStart)..<angleBracketEnd])
+        }
+        // Strip sip:/sips: scheme for consistent user@domain format
+        if extracted.lowercased().hasPrefix("sips:") {
+            dialableURI = String(extracted.dropFirst(5))
+        } else if extracted.lowercased().hasPrefix("sip:") {
+            dialableURI = String(extracted.dropFirst(4))
+        } else {
+            dialableURI = extracted
+        }
+
+        let record = CallRecord(
+            accountID: accountID,
+            remoteURI: dialableURI,
+            remoteName: callInfo.remoteName,
+            direction: direction,
+            duration: duration
+        )
+
+        CallHistoryStore.shared.addRecord(record)
+        NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
     }
 
     /// Starts the call duration timer.

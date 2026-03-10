@@ -9,6 +9,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let showAboutSettings = Notification.Name("com.tonephone.showAboutSettings")
+    static let showLicensesSettings = Notification.Name("com.tonephone.showLicensesSettings")
     static let accountSettingsChanged = Notification.Name("com.tonephone.accountSettingsChanged")
 }
 
@@ -20,6 +21,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case permissions
     case advanced
     case about
+    case licenses
 
     var id: String { rawValue }
 
@@ -31,6 +33,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .permissions: return "Permissions"
         case .advanced: return "Advanced"
         case .about: return "About"
+        case .licenses: return "Licenses"
         }
     }
 
@@ -42,6 +45,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .permissions: return "hand.raised"
         case .advanced: return "slider.horizontal.3"
         case .about: return "info.circle"
+        case .licenses: return "doc.text"
         }
     }
 }
@@ -71,6 +75,9 @@ struct SettingsWindowView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAboutSettings)) { _ in
             selectedCategory = .about
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showLicensesSettings)) { _ in
+            selectedCategory = .licenses
         }
     }
 
@@ -108,6 +115,8 @@ struct SettingsWindowView: View {
                 AdvancedSettingsView()
             case .about:
                 AboutSettingsView()
+            case .licenses:
+                LicensesSettingsView()
             }
         } else {
             Text("Select a category")

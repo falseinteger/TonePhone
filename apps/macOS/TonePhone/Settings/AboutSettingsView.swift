@@ -34,6 +34,15 @@ struct AboutSettingsView: View {
                         licenseRow("libre", "BSD-3-Clause")
                         licenseRow("OpenSSL", "Apache-2.0")
                         licenseRow("Opus", "BSD-3-Clause")
+                        licenseRow("PhoneNumberKit", "MIT")
+
+                        Button("View Full Licenses") {
+                            SettingsWindowView.pendingCategory = .licenses
+                            // Trigger sidebar selection change
+                            NotificationCenter.default.post(name: .showLicensesSettings, object: nil)
+                        }
+                        .font(.system(size: 12))
+                        .buttonStyle(.link)
                     }
                     .padding(12)
                 }

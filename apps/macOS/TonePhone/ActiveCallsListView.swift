@@ -18,20 +18,20 @@ struct ActiveCallItem: Identifiable {
     let isOnHold: Bool
     let isOutgoing: Bool
 
-    /// Display name for the call.
+    /// Display name for the call, with phone number formatting when applicable.
     var displayName: String {
         if let name = remoteName, !name.isEmpty {
-            return name
+            return PhoneNumberService.formatForDisplay(name)
         }
         if let uri = remoteURI {
             if uri.lowercased().hasPrefix("sip:") {
                 let withoutScheme = String(uri.dropFirst(4))
                 if let atIndex = withoutScheme.firstIndex(of: "@") {
-                    return String(withoutScheme[..<atIndex])
+                    return PhoneNumberService.formatForDisplay(String(withoutScheme[..<atIndex]))
                 }
-                return withoutScheme
+                return PhoneNumberService.formatForDisplay(withoutScheme)
             }
-            return uri
+            return PhoneNumberService.formatForDisplay(uri)
         }
         return "Unknown"
     }
