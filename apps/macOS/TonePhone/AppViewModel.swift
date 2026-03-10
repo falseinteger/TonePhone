@@ -404,6 +404,8 @@ final class AppViewModel: ObservableObject {
                 callState = .ended(reason: reason)
                 stopCallDurationTimer()
             }
+            // Record in call history
+            recordCallHistory(callInfo)
             scheduleCallCleanup(callID: callID, delay: 1.5)
         }
     }
@@ -508,6 +510,38 @@ final class AppViewModel: ObservableObject {
         }
 
         return uri
+    }
+
+    /// Records a completed call in the call history.
+    private func recordCallHistory(_ callInfo: CallInfo) {
+        guard let accountID = activeAccount?.id else { return }
+
+        let direction: CallDirection
+        if callInfo.isOutgoing {
+            direction = .outbound
+        } else if callInfo.startTime != nil {
+            direction = .inbound
+        } else {
+            direction = .missed
+        }
+
+        let duration: TimeInterval
+        if let start = callInfo.startTime {
+            duration = Date().timeIntervalSince(start)
+        } else {
+            duration = 0
+        }
+
+        let record = CallRecord(
+            accountID: accountID,
+            remoteURI: callInfo.remoteURI ?? "Unknown",
+            remoteName: callInfo.remoteName,
+            direction: direction,
+            duration: duration
+        )
+
+        CallHistoryStore.shared.addRecord(record)
+        NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
     }
 
     /// Starts the call duration timer.

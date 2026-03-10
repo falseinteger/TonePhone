@@ -14,14 +14,32 @@ import SwiftUI
 struct ActiveAccountView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var isDialpadPresented = false
+    @State private var selectedTab: ActiveAccountTab = .recents
+
+    /// Tabs for the main account view.
+    private enum ActiveAccountTab {
+        case recents
+        case activeCalls
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Account header bar
             accountHeader
 
-            // Active calls list
-            ActiveCallsListView(viewModel: viewModel)
+            // Tab bar (only show if there are active calls)
+            if !viewModel.activeCalls.isEmpty {
+                tabBar
+            }
+
+            // Content based on selected tab
+            if !viewModel.activeCalls.isEmpty && selectedTab == .activeCalls {
+                ActiveCallsListView(viewModel: viewModel)
+            } else {
+                CallHistoryView(viewModel: viewModel) { uri in
+                    redialFromHistory(uri)
+                }
+            }
 
             // Dialpad button bar
             dialpadButtonBar
@@ -105,6 +123,37 @@ struct ActiveAccountView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accountAccessibilityLabel)
+    }
+
+    // MARK: - Tab Bar
+
+    private var tabBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                tabButton("Recents", icon: "clock", tab: .recents)
+                tabButton("Active Calls", icon: "phone.fill", tab: .activeCalls)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            Divider()
+        }
+    }
+
+    private func tabButton(_ title: String, icon: String, tab: ActiveAccountTab) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(title)
+                    .font(.system(size: 11, weight: selectedTab == tab ? .semibold : .regular))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .foregroundColor(selectedTab == tab ? .accentColor : .secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Dialpad Button Bar
@@ -201,6 +250,13 @@ struct ActiveAccountView: View {
         }
         let name = accountDisplayName(account)
         return "\(name) on \(account.server), \(viewModel.registrationStatus.displayText)"
+    }
+
+    /// Redials a URI from call history.
+    private func redialFromHistory(_ uri: String) {
+        let formatted = formatURI(uri)
+        guard !formatted.isEmpty else { return }
+        viewModel.makeCall(to: formatted)
     }
 
     /// Formats a user input into a proper SIP URI if needed.
