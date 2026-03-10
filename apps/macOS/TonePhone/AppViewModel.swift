@@ -126,6 +126,8 @@ final class AppViewModel: ObservableObject {
         var isOnHold: Bool = false
         var startTime: Date?
         var isOutgoing: Bool = false
+        /// The account that owns this call (for history recording).
+        var ownerAccountID: UUID?
     }
 
     /// All active calls tracked by ID.
@@ -340,6 +342,7 @@ final class AppViewModel: ObservableObject {
         case .outgoing:
             callInfo.state = .outgoing
             callInfo.isOutgoing = true
+            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
             // Make this the displayed call
             activeCallID = callID
@@ -352,6 +355,7 @@ final class AppViewModel: ObservableObject {
             callInfo.state = .incoming(remoteURI: remoteURI)
             callInfo.remoteURI = remoteURI
             callInfo.remoteName = parseDisplayName(from: remoteURI)
+            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
             // Make this the displayed call
             activeCallID = callID
@@ -516,7 +520,7 @@ final class AppViewModel: ObservableObject {
 
     /// Records a completed call in the call history.
     private func recordCallHistory(_ callInfo: CallInfo) {
-        guard let accountID = activeAccount?.id else { return }
+        guard let accountID = callInfo.ownerAccountID ?? activeAccount?.id else { return }
 
         let direction: CallDirection
         if callInfo.isOutgoing {
