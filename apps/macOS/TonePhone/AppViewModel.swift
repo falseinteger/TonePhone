@@ -128,6 +128,8 @@ final class AppViewModel: ObservableObject {
         var isOutgoing: Bool = false
         /// The account that owns this call (for history recording).
         var ownerAccountID: UUID?
+        /// Whether this call has already been recorded in history.
+        var historyRecorded: Bool = false
     }
 
     /// All active calls tracked by ID.
@@ -330,6 +332,10 @@ final class AppViewModel: ObservableObject {
 
         switch state {
         case .idle:
+            // Record in call history if not already recorded via .ended
+            if callInfo.remoteURI != nil {
+                recordCallHistory(callInfo)
+            }
             // Remove from active calls
             activeCalls.removeValue(forKey: callID)
             // Ensure ringtone and notification are stopped
@@ -403,6 +409,9 @@ final class AppViewModel: ObservableObject {
 
         case .ended(let reason):
             callInfo.state = .ended(reason: reason)
+            // Record in call history
+            recordCallHistory(callInfo)
+            callInfo.historyRecorded = true
             activeCalls[callID] = callInfo
             // Stop ringtone and remove notification
             IncomingCallManager.shared.handleCallEnded()
@@ -410,8 +419,6 @@ final class AppViewModel: ObservableObject {
                 callState = .ended(reason: reason)
                 stopCallDurationTimer()
             }
-            // Record in call history
-            recordCallHistory(callInfo)
             scheduleCallCleanup(callID: callID, delay: 1.5)
         }
     }
@@ -520,6 +527,7 @@ final class AppViewModel: ObservableObject {
 
     /// Records a completed call in the call history.
     private func recordCallHistory(_ callInfo: CallInfo) {
+        guard !callInfo.historyRecorded else { return }
         guard let accountID = callInfo.ownerAccountID ?? activeAccount?.id else { return }
 
         let direction: CallDirection
@@ -968,7 +976,8 @@ final class AppViewModel: ObservableObject {
                     state: .outgoing,
                     remoteURI: uri,
                     remoteName: self.parseDisplayName(from: uri),
-                    isOutgoing: true
+                    isOutgoing: true,
+                    ownerAccountID: self.activeAccount?.id
                 )
                 self.activeCalls[callID] = callInfo
 
