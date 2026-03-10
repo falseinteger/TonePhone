@@ -126,7 +126,9 @@ final class CallHistoryStore {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
         do {
             let data = try Data(contentsOf: fileURL)
-            return try JSONDecoder().decode([CallRecord].self, from: data)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode([CallRecord].self, from: data)
         } catch {
             print("Failed to load call history: \(error)")
             return []

@@ -30,8 +30,17 @@ struct DialpadView: View {
         Binding(
             get: { PhoneNumberService.formatPartial(input) },
             set: { newValue in
-                // Extract only dial-valid characters from pasted/typed input
-                input = String(newValue.filter { "0123456789+*#".contains($0) })
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Preserve SIP URIs and address input as-is
+                if trimmed.lowercased().hasPrefix("sip:") ||
+                    trimmed.lowercased().hasPrefix("sips:") ||
+                    trimmed.contains("@") ||
+                    trimmed.contains(where: { $0.isLetter }) {
+                    input = newValue
+                } else {
+                    // Extract only dial-valid characters from phone-like input
+                    input = String(newValue.filter { "0123456789+*#".contains($0) })
+                }
             }
         )
     }

@@ -166,12 +166,14 @@ struct LicensesSettingsView: View {
 
                     Spacer()
 
-                    Link(destination: URL(string: entry.url)!) {
-                        HStack(spacing: 4) {
-                            Text("Source")
-                                .font(.system(size: 11))
-                            Image(systemName: "arrow.up.right.square")
-                                .font(.system(size: 10))
+                    if let url = URL(string: entry.url) {
+                        Link(destination: url) {
+                            HStack(spacing: 4) {
+                                Text("Source")
+                                    .font(.system(size: 11))
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 10))
+                            }
                         }
                     }
                 }

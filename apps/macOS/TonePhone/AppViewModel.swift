@@ -376,7 +376,9 @@ final class AppViewModel: ObservableObject {
         case .established:
             callInfo.state = .established
             callInfo.isOnHold = false
-            callInfo.startTime = Date()
+            if callInfo.startTime == nil {
+                callInfo.startTime = Date()
+            }
             activeCalls[callID] = callInfo
             if activeCallID == callID {
                 callState = .established
@@ -532,9 +534,24 @@ final class AppViewModel: ObservableObject {
             duration = 0
         }
 
+        // Extract a clean, dialable URI from the raw remote URI
+        let rawURI = callInfo.remoteURI ?? "Unknown"
+        let dialableURI: String
+        // Handle "Display Name" <sip:user@domain> format
+        if let angleBracketStart = rawURI.firstIndex(of: "<"),
+           let angleBracketEnd = rawURI.firstIndex(of: ">") {
+            dialableURI = String(rawURI[rawURI.index(after: angleBracketStart)..<angleBracketEnd])
+        } else if rawURI.lowercased().hasPrefix("sip:") {
+            // Extract user@domain from sip:user@domain
+            let withoutScheme = String(rawURI.dropFirst(4))
+            dialableURI = withoutScheme
+        } else {
+            dialableURI = rawURI
+        }
+
         let record = CallRecord(
             accountID: accountID,
-            remoteURI: callInfo.remoteURI ?? "Unknown",
+            remoteURI: dialableURI,
             remoteName: callInfo.remoteName,
             direction: direction,
             duration: duration
