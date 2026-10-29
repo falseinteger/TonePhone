@@ -19,31 +19,31 @@ No versions. No timelines. No promises. Just a checklist.
 
 ### Core App
 
-- [ ] App lifecycle management (macOS)
+- [x] App lifecycle management (macOS)
 - [ ] App lifecycle management (iOS)
-- [ ] Settings storage (UserDefaults)
-- [ ] Secure credential storage (Keychain)
-- [ ] Call history storage (JSON)
-- [ ] Log file management
+- [x] Settings storage (UserDefaults)
+- [x] Secure credential storage (Keychain)
+- [x] Call history storage (JSON)
+- [x] Log file management
 
 ### Bridge Layer
 
-- [ ] Core initialization / shutdown
-- [ ] Account CRUD operations
-- [ ] Registration state callbacks
-- [ ] Call control API
-- [ ] Call state callbacks
-- [ ] Audio device enumeration
-- [ ] Diagnostics API
-- [ ] Event dispatch to main thread
+- [x] Core initialization / shutdown
+- [x] Account CRUD operations
+- [x] Registration state callbacks
+- [x] Call control API
+- [x] Call state callbacks
+- [x] Audio device enumeration
+- [~] Diagnostics API (log file, SIP message trace; RTP statistics not yet)
+- [x] Event dispatch to main thread
 
 ### Platform Adapters
 
-- [ ] CoreAudio device selection (macOS)
+- [x] CoreAudio device selection (macOS)
 - [ ] AVAudioSession management (iOS)
-- [ ] Microphone permission request
-- [ ] Audio route change handling
-- [ ] App background/foreground handling
+- [x] Microphone permission request
+- [x] Audio route change handling (device hot-plug)
+- [x] App background/foreground handling (wake from sleep, network change)
 
 ---
 
@@ -51,19 +51,19 @@ No versions. No timelines. No promises. Just a checklist.
 
 ### macOS
 
-- [ ] Main window layout
-- [ ] Account configuration screen
-- [ ] Registration status indicator
-- [ ] Dialpad / URI input
-- [ ] Incoming call alert
-- [ ] Active call screen
-- [ ] Call controls (answer, hangup, hold, mute)
-- [ ] DTMF input
-- [ ] Audio device picker
-- [ ] Call history list
-- [ ] Settings screen
-- [ ] Log viewer
-- [ ] Diagnostics export
+- [x] Main window layout
+- [x] Account configuration screen
+- [x] Registration status indicator
+- [x] Dialpad / URI input
+- [x] Incoming call alert
+- [x] Active call screen
+- [x] Call controls (answer, hangup, hold, mute)
+- [x] DTMF input
+- [x] Audio device picker
+- [x] Call history list
+- [x] Settings screen
+- [x] Log viewer
+- [x] Diagnostics export
 
 ### iOS
 
@@ -88,8 +88,8 @@ Priority codecs for TonePhone:
 
 | Codec | Status | Notes |
 |-------|--------|-------|
-| g711 | [ ] | Required. PCMU/PCMA. Universal compatibility. |
-| opus | [ ] | Required. Modern, efficient, good quality. |
+| g711 | [x] | Required. PCMU/PCMA. Universal compatibility. |
+| opus | [x] | Required. Modern, efficient, good quality. |
 | g722 | [ ] | Optional. Wideband, good compatibility. |
 
 ### Other Codecs (baresip supported, lower priority)
@@ -110,8 +110,8 @@ Priority codecs for TonePhone:
 
 | Module | Status | Platform |
 |--------|--------|----------|
-| audiounit | [ ] | macOS, iOS |
-| coreaudio | [ ] | macOS (device enumeration) |
+| audiounit | [x] | macOS, iOS |
+| coreaudio | [x] | macOS (device enumeration) |
 
 ### Other Platforms (Not shipped in TonePhone)
 
@@ -152,11 +152,12 @@ Priority codecs for TonePhone:
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| stun | [ ] | Required. Basic NAT traversal. |
-| turn | [ ] | Required. Relay for symmetric NAT. |
-| ice | [ ] | Required. Full ICE support. |
+| stun | [x] | Required. Basic NAT traversal. |
+| turn | [x] | Required. Relay for symmetric NAT. |
+| ice | [x] | Required. Full ICE support. |
 | natpmp | [ ] | Optional. Router port mapping. |
 | pcp | [ ] | Optional. Port Control Protocol. |
+| netroam | [x] | Re-registers when the network changes. |
 
 ---
 
@@ -164,8 +165,8 @@ Priority codecs for TonePhone:
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| srtp | [ ] | Required. Media encryption (SDES). |
-| dtls_srtp | [ ] | Required. Media encryption (DTLS). |
+| srtp | [x] | Required. Media encryption (SDES). |
+| dtls_srtp | [x] | Required. Media encryption (DTLS). |
 | gzrtp | [ ] | Optional. ZRTP support. Adds complexity. |
 
 ---
@@ -219,7 +220,7 @@ TonePhone has its own native UI. Baresip control modules are for debugging only.
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| account | [ ] | Account file loader |
+| account | [x] | Account file loader |
 | syslog | [ ] | System logging (macOS) |
 | uuid | [ ] | UUID generation |
 
@@ -254,9 +255,9 @@ Requires server-side infrastructure.
 
 ### Multiple Accounts
 
-- [ ] UI for multiple accounts
-- [ ] Account switching
-- [ ] Per-account call history
+- [~] UI for multiple accounts (one connected at a time)
+- [x] Account switching
+- [x] Per-account call history
 
 Data model supports this. UI complexity increase.
 

@@ -130,8 +130,19 @@ Accessibility is mandatory, not optional:
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | New account |
-| `Cmd+K` | Open dialer / dial |
+| `Cmd+K` | Keypad (dialing, or tones during a call) |
 | `Cmd+,` | Open settings |
+| `Return` / `Esc` | Answer / decline an incoming call (incoming call screen) |
+| `Cmd+Return` | Answer (Call menu) |
+| `Cmd+U` | Mute / unmute |
+| `Cmd+R` | Hold / resume |
+| `Cmd+D` | End call |
+| `Cmd+[` | Back from the call screen |
+| `Option+Cmd+L` | Logs window |
+
+Never reuse system shortcuts for call actions: `Cmd+M` (Minimize),
+`Cmd+H` (Hide) and `Cmd+A` (Select All) belong to macOS. Every call action
+must also be in the Call menu.
 
 ### Standard Behaviors
 

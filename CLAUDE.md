@@ -6,17 +6,30 @@ It is optional and not part of the TonePhone product.
 ## Build Commands
 
 ```bash
-# Build for macOS (Debug) - primary platform
-xcodebuild -project TonePhone.xcodeproj -scheme TonePhone -configuration Debug
+# Build the macOS app (Debug). The project lives in apps/macOS.
+xcodebuild -project apps/macOS/TonePhone.xcodeproj -scheme TonePhone -configuration Debug
 
-# Build for iOS Simulator (Debug)
-xcodebuild -project TonePhone.xcodeproj -scheme TonePhone -sdk iphonesimulator -configuration Debug
-
-# List schemes and targets
-xcodebuild -project TonePhone.xcodeproj -list
+# Rebuild the core libraries (after changing core/ submodules or core/patches)
+./scripts/build-core.sh --clean && ./scripts/package-xcframework.sh
 ```
 
-No test target is configured yet.
+There is no iOS app yet and no test target.
+
+### Testing without a provider
+
+`scripts/dev-sip-server.py` is a minimal registrar and call peer (UDP, digest
+auth). It listens on the Mac's LAN address (baresip won't call loopback);
+type `call`, `cancel`, `bye` on its stdin. Point an account at the printed
+address, port 5070.
+
+Debug builds write PNGs of their own windows when they receive the
+distributed notification `io.falseinteger.tonephone.snapshot` (object = path
+prefix); see `DebugSnapshot.swift`. This is how README screenshots are made.
+
+To keep test data away from real data, launch the binary with both
+`HOME` and `CFFIXED_USER_HOME` pointing at a scratch directory. Debug builds
+keep passwords and settings in the `io.falseinteger.tonephone` defaults
+domain, which is not redirected.
 
 ## Architecture
 
@@ -35,33 +48,36 @@ Baresip Core (C)         ← SIP + RTP + codecs + NAT + encryption
 ### Repository Layout
 
 ```
-core/           baresip + libre (submodule/vendored), build scripts, patches
+core/           baresip + re submodules (upstream tags), openssl/opus builds, patches/
 bridge/         C headers (include/), C implementation (src/), Swift wrapper (swift/)
-platform/       apple/audio, apple/permissions, apple/lifecycle, apple/callkit
-apps/           macOS/, iOS/
+apps/macOS/     SwiftUI app; platform code (audio, permissions, notifications) lives here
+scripts/        core build scripts, dev SIP server
 ```
 
 ### Bridge Layer (C API boundary)
 
 Swift calls a stable C API (`tp_*` functions), never baresip structs directly.
 
-Key API groups:
-- **Lifecycle:** `tp_init()`, `tp_start()`, `tp_stop()`
-- **Accounts:** `tp_account_add()`, `tp_account_register()`, `tp_account_remove()`
-- **Calls:** `tp_call_start()`, `tp_call_answer()`, `tp_call_hangup()`, `tp_call_hold()`, `tp_call_mute()`, `tp_call_dtmf()`
+Key API groups (`bridge/include/tp_bridge.h`):
+- **Lifecycle:** `tp_init()`, `tp_start()`, `tp_stop()`, `tp_shutdown()`
+- **Accounts:** `tp_account_add()`, `tp_account_register()`, `tp_account_unregister()`, `tp_account_remove()`, `tp_account_set_default()`
+- **Calls:** `tp_call_start()` (default account), `tp_call_answer()`, `tp_call_hangup()`, `tp_call_hold()`, `tp_call_mute()`, `tp_call_send_dtmf()`
+- **Audio devices:** `tp_audio_get_input_devices()`, `tp_audio_set_input_device()`, output equivalents
 - **Events:** `tp_set_event_callback(fn, ctx)`
-- **Diagnostics:** `tp_get_rtp_stats()`, `tp_get_sip_trace()`, `tp_export_logs()`
+- **Diagnostics:** `tp_log_*()`, `tp_log_set_sip_trace()`; RTP statistics are not exposed yet
 
 ### Threading Rules
 
-- Baresip core runs on dedicated background thread
-- Bridge posts events onto a safe queue
-- UI receives events on main thread
+- Baresip core runs `re_main` on a dedicated background thread
+- Every bridge function that touches baresip/libre objects runs inside
+  `re_thread_enter()`/`re_thread_leave()`. Lock order: re lock, then `g_mutex`.
+- The event callback runs on the SIP thread; `TonePhoneCore` copies the data
+  and hops to `DispatchQueue.main` (FIFO, keeps event order)
 - **No direct UI calls from C. Ever.**
 
 ### Event Types (Swift)
 
-`CoreStateChanged`, `AccountStateChanged`, `CallStateChanged`, `MediaStateChanged`, `DeviceStateChanged`, `LogLine`
+`TonePhoneEvent`: `coreStateChanged`, `accountStateChanged`, `callStateChanged` (with remote name and owning account), `mediaChanged`, `audioDeviceChanged`
 
 ## Core Rules
 
@@ -95,20 +111,26 @@ See `ROADMAP.md` for full baresip feature parity checklist. Policy:
 ## Storage
 
 No Core Data/SwiftData in v1:
-- **Accounts:** JSON + Keychain for credentials
+- **Accounts:** JSON + Keychain for credentials (Debug builds use UserDefaults to avoid Keychain prompts)
 - **Call history:** JSON (ring buffer)
 - **UI prefs:** UserDefaults
 
 ## Build Strategy
 
-Build `libre` + `librem` + `libbaresip` as static libraries, package into XCFrameworks. See `BUILDING.md` for full build scripts and Xcode integration.
+Build `libre` (includes librem) + `libbaresip` as static libraries, package into XCFrameworks. See `BUILDING.md` for full build scripts and Xcode integration.
 
 ```bash
 ./scripts/build-core.sh          # Build all platforms
 ./scripts/package-xcframework.sh # Create XCFrameworks
 ```
 
-Enabled modules: `audiounit`, `opus`, `g711`, `stun`, `turn`, `ice`, `srtp`, `dtls_srtp`, `account`
+Enabled modules: `audiounit`, `opus`, `g711`, `stun`, `turn`, `ice`, `srtp`, `dtls_srtp`, `account`, `netroam`
+
+The baresip config file is generated by `TonePhoneCore` on every launch;
+edit the template there, not the file in Application Support.
+
+baresip/libre are pinned to upstream tags; TonePhone fixes are patch files in
+`core/patches/` applied at build time (see `core/patches/README.md`).
 
 ## Documentation
 

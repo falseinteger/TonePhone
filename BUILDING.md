@@ -1,6 +1,6 @@
 # BUILDING.md — TonePhone Core Libraries
 
-This document describes how to build **baresip**, **libre (re)**, and **librem (rem)** as static libraries for Apple platforms, package them into XCFrameworks, and integrate them into Xcode projects.
+This document describes how to build **baresip** and **libre (re)** (which includes librem) as static libraries for Apple platforms, package them into XCFrameworks, and integrate them into Xcode projects.
 
 ---
 
@@ -40,7 +40,7 @@ xcode-select -p
 tonephone/
 ├── core/
 │   ├── re/                    # libre source (git submodule)
-│   ├── rem/                   # librem source (git submodule)
+│   ├── patches/               # TonePhone patches applied to baresip at build time
 │   ├── baresip/               # baresip source (git submodule)
 │   ├── openssl/               # OpenSSL builds per platform (created by build)
 │   └── opus/                  # Opus builds per platform (optional, created by build)
@@ -242,291 +242,42 @@ After building, `build-core.sh` will automatically detect libopus and enable the
 
 ## Build Strategy
 
-Each library (re, rem, baresip) is built separately for each platform/architecture combination, then combined into fat libraries or XCFrameworks.
+`scripts/build-core.sh` builds libre and baresip as static libraries for each
+platform, then `scripts/package-xcframework.sh` combines them into
+XCFrameworks in `output/xcframeworks/`. The scripts are the source of truth;
+read them for exact CMake flags.
 
 ### Target Matrix
 
-| Platform | Architecture | SDK | Deployment Target |
-|----------|--------------|-----|-------------------|
-| macOS | arm64 | macosx | 12.0 |
-| macOS | x86_64 | macosx | 12.0 |
-| iOS Device | arm64 | iphoneos | 15.0 |
-| iOS Simulator | arm64 | iphonesimulator | 15.0 |
-| iOS Simulator | x86_64 | iphonesimulator | 15.0 |
+| Platform | SDK | Architectures |
+|----------|-----|---------------|
+| macOS | macosx | arm64, x86_64 (fat) |
+| iOS device | iphoneos | arm64 |
+| iOS Simulator | iphonesimulator | arm64, x86_64 (fat) |
 
 ### Build Order
 
-Dependencies must be built in order:
+1. **libre (re)** — includes librem (`USE_REM=ON`); there is no separate rem build.
+2. **baresip** — built from `build/src/baresip`, a copy of `core/baresip` with
+   `core/patches/baresip/*.patch` applied (see [core/patches/README.md](core/patches/README.md)).
 
-1. **libre (re)** — core library, no dependencies except OpenSSL
-2. **librem (rem)** — depends on libre
-3. **baresip** — depends on libre and librem
-
----
-
-## Build Script
-
-Create `scripts/build-core.sh`:
+### Commands
 
 ```bash
-#!/bin/bash
-set -euo pipefail
-
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CORE_DIR="$PROJECT_ROOT/core"
-BUILD_DIR="$PROJECT_ROOT/build"
-OUTPUT_DIR="$PROJECT_ROOT/output"
-
-# Deployment targets
-MACOS_DEPLOYMENT_TARGET="12.0"
-IOS_DEPLOYMENT_TARGET="15.0"
-
-# Platforms to build
-PLATFORMS=(
-    "macos-arm64:macosx:arm64"
-    "macos-x86_64:macosx:x86_64"
-    "ios-arm64:iphoneos:arm64"
-    "ios-sim-arm64:iphonesimulator:arm64"
-    "ios-sim-x86_64:iphonesimulator:x86_64"
-)
-
-# Baresip modules to enable (opus added automatically if libopus is found)
-BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
-
-build_libre() {
-    local platform=$1
-    local sdk=$2
-    local arch=$3
-    local build_path="$BUILD_DIR/$platform/re"
-    local install_path="$OUTPUT_DIR/$platform"
-    local openssl_path="$CORE_DIR/openssl/$platform"
-
-    echo "=== Building libre for $platform ($arch) ==="
-
-    rm -rf "$build_path"
-    mkdir -p "$build_path"
-
-    local sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
-    local deployment_flag=""
-
-    if [[ "$sdk" == "macosx" ]]; then
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET"
-    else
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET"
-    fi
-
-    cmake -S "$CORE_DIR/re" -B "$build_path" -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_SYSTEM_NAME=$([ "$sdk" == "macosx" ] && echo "Darwin" || echo "iOS") \
-        -DCMAKE_OSX_ARCHITECTURES="$arch" \
-        -DCMAKE_OSX_SYSROOT="$sdk_path" \
-        $deployment_flag \
-        -DCMAKE_INSTALL_PREFIX="$install_path" \
-        -DOPENSSL_ROOT_DIR="$openssl_path" \
-        -DOPENSSL_USE_STATIC_LIBS=ON \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DUSE_OPENSSL=ON
-
-    cmake --build "$build_path" --parallel
-    cmake --install "$build_path"
-}
-
-build_librem() {
-    local platform=$1
-    local sdk=$2
-    local arch=$3
-    local build_path="$BUILD_DIR/$platform/rem"
-    local install_path="$OUTPUT_DIR/$platform"
-
-    echo "=== Building librem for $platform ($arch) ==="
-
-    rm -rf "$build_path"
-    mkdir -p "$build_path"
-
-    local sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
-    local deployment_flag=""
-
-    if [[ "$sdk" == "macosx" ]]; then
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET"
-    else
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET"
-    fi
-
-    cmake -S "$CORE_DIR/rem" -B "$build_path" -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_SYSTEM_NAME=$([ "$sdk" == "macosx" ] && echo "Darwin" || echo "iOS") \
-        -DCMAKE_OSX_ARCHITECTURES="$arch" \
-        -DCMAKE_OSX_SYSROOT="$sdk_path" \
-        $deployment_flag \
-        -DCMAKE_INSTALL_PREFIX="$install_path" \
-        -DCMAKE_PREFIX_PATH="$install_path" \
-        -DBUILD_SHARED_LIBS=OFF
-
-    cmake --build "$build_path" --parallel
-    cmake --install "$build_path"
-}
-
-build_baresip() {
-    local platform=$1
-    local sdk=$2
-    local arch=$3
-    local build_path="$BUILD_DIR/$platform/baresip"
-    local install_path="$OUTPUT_DIR/$platform"
-    local openssl_path="$CORE_DIR/openssl/$platform"
-
-    echo "=== Building baresip for $platform ($arch) ==="
-
-    rm -rf "$build_path"
-    mkdir -p "$build_path"
-
-    local sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
-    local deployment_flag=""
-
-    if [[ "$sdk" == "macosx" ]]; then
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET"
-    else
-        deployment_flag="-DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET"
-    fi
-
-    cmake -S "$CORE_DIR/baresip" -B "$build_path" -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_SYSTEM_NAME=$([ "$sdk" == "macosx" ] && echo "Darwin" || echo "iOS") \
-        -DCMAKE_OSX_ARCHITECTURES="$arch" \
-        -DCMAKE_OSX_SYSROOT="$sdk_path" \
-        $deployment_flag \
-        -DCMAKE_INSTALL_PREFIX="$install_path" \
-        -DCMAKE_PREFIX_PATH="$install_path" \
-        -DOPENSSL_ROOT_DIR="$openssl_path" \
-        -DOPENSSL_USE_STATIC_LIBS=ON \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DSTATIC=ON \
-        -DMODULES="$BARESIP_MODULES"
-
-    cmake --build "$build_path" --parallel
-    cmake --install "$build_path"
-}
-
-# Main build loop
-for entry in "${PLATFORMS[@]}"; do
-    IFS=':' read -r platform sdk arch <<< "$entry"
-
-    build_libre "$platform" "$sdk" "$arch"
-    build_librem "$platform" "$sdk" "$arch"
-    build_baresip "$platform" "$sdk" "$arch"
-done
-
-echo "=== Build complete ==="
-echo "Output: $OUTPUT_DIR"
+./scripts/build-openssl.sh            # once
+./scripts/build-opus.sh               # optional, enables the opus module
+./scripts/build-core.sh --clean       # libre + baresip for all platforms
+./scripts/package-xcframework.sh      # output/xcframeworks/*.xcframework
 ```
 
-Make executable and run:
+`build-core.sh` skips platforms whose libraries already exist; pass `--clean`
+after changing submodule versions or patches.
 
-```bash
-chmod +x scripts/build-core.sh
-./scripts/build-core.sh
-```
+### Updating baresip and libre
 
----
-
-## XCFramework Packaging
-
-After building all platforms, package into XCFrameworks.
-
-Create `scripts/package-xcframework.sh`:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUTPUT_DIR="$PROJECT_ROOT/output"
-XCFW_DIR="$OUTPUT_DIR/xcframeworks"
-
-rm -rf "$XCFW_DIR"
-mkdir -p "$XCFW_DIR"
-
-# Create fat library for iOS Simulator (arm64 + x86_64)
-create_sim_fat_lib() {
-    local lib_name=$1
-    local fat_dir="$OUTPUT_DIR/ios-sim-fat/lib"
-    mkdir -p "$fat_dir"
-
-    lipo -create \
-        "$OUTPUT_DIR/ios-sim-arm64/lib/$lib_name" \
-        "$OUTPUT_DIR/ios-sim-x86_64/lib/$lib_name" \
-        -output "$fat_dir/$lib_name"
-}
-
-# Create fat library for macOS (arm64 + x86_64)
-create_macos_fat_lib() {
-    local lib_name=$1
-    local fat_dir="$OUTPUT_DIR/macos-fat/lib"
-    mkdir -p "$fat_dir"
-
-    lipo -create \
-        "$OUTPUT_DIR/macos-arm64/lib/$lib_name" \
-        "$OUTPUT_DIR/macos-x86_64/lib/$lib_name" \
-        -output "$fat_dir/$lib_name"
-}
-
-# Copy headers (same across all platforms)
-copy_headers() {
-    cp -R "$OUTPUT_DIR/macos-arm64/include" "$OUTPUT_DIR/macos-fat/"
-    cp -R "$OUTPUT_DIR/ios-sim-arm64/include" "$OUTPUT_DIR/ios-sim-fat/"
-}
-
-# Libraries to package (librem is built into libre via USE_REM=ON)
-LIBS=("libre.a" "libbaresip.a")
-
-echo "=== Creating fat libraries ==="
-
-for lib in "${LIBS[@]}"; do
-    create_sim_fat_lib "$lib"
-    create_macos_fat_lib "$lib"
-done
-
-copy_headers
-
-echo "=== Creating XCFrameworks ==="
-
-# libre.xcframework (includes rem functionality)
-xcodebuild -create-xcframework \
-    -library "$OUTPUT_DIR/macos-fat/lib/libre.a" \
-    -headers "$OUTPUT_DIR/macos-fat/include" \
-    -library "$OUTPUT_DIR/ios-arm64/lib/libre.a" \
-    -headers "$OUTPUT_DIR/ios-arm64/include" \
-    -library "$OUTPUT_DIR/ios-sim-fat/lib/libre.a" \
-    -headers "$OUTPUT_DIR/ios-sim-fat/include" \
-    -output "$XCFW_DIR/libre.xcframework"
-
-# libbaresip.xcframework
-xcodebuild -create-xcframework \
-    -library "$OUTPUT_DIR/macos-fat/lib/libbaresip.a" \
-    -headers "$OUTPUT_DIR/macos-fat/include" \
-    -library "$OUTPUT_DIR/ios-arm64/lib/libbaresip.a" \
-    -headers "$OUTPUT_DIR/ios-arm64/include" \
-    -library "$OUTPUT_DIR/ios-sim-fat/lib/libbaresip.a" \
-    -headers "$OUTPUT_DIR/ios-sim-fat/include" \
-    -output "$XCFW_DIR/libbaresip.xcframework"
-
-echo "=== XCFrameworks created ==="
-ls -la "$XCFW_DIR"
-```
-
-Run:
-
-```bash
-chmod +x scripts/package-xcframework.sh
-./scripts/package-xcframework.sh
-```
-
-Output:
-
-```text
-output/xcframeworks/
-├── libre.xcframework
-└── libbaresip.xcframework
-```
+baresip and libre are released together with the same version number.
+Check out the same tag in both submodules, rebuild with `--clean`, and fix
+or drop patches that no longer apply. Current version: **4.12.0**.
 
 ---
 
@@ -560,7 +311,6 @@ Or use a bridging header for Swift:
 ```c
 // TonePhoneBridge.h
 #include <re/re.h>
-#include <rem/rem.h>
 #include <baresip/baresip.h>
 ```
 
@@ -602,7 +352,6 @@ Create a bridging header to expose C APIs to Swift:
 #define TonePhone_Bridging_Header_h
 
 #include <re/re.h>
-#include <rem/rem.h>
 #include <baresip/baresip.h>
 
 // Include your bridge layer headers here
