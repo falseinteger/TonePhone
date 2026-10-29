@@ -185,6 +185,9 @@ static int build_aor(char *buf, size_t sz, const tp_account_config_t *config)
     if (config->nat_pinhole)
         err |= aor_append(buf, sz, &len, ";natpinhole=yes");
 
+    /* baresip subscribes to voicemail by default; make it explicit */
+    err |= aor_append(buf, sz, &len, ";mwi=%s", config->mwi ? "yes" : "no");
+
     return err ? ENOMEM : 0;
 }
 
@@ -371,8 +374,20 @@ static tp_error_t account_remove_locked(tp_account_id_t id)
     /* Unregister UA outside of mutex - this may fire events.
      * Events can still find account via removing_ua pointer match. */
     if (ua_to_remove) {
+        /* End the account's calls first so each one emits CALL_CLOSED */
+        struct le *le = list_head(ua_calls(ua_to_remove));
+        while (le) {
+            struct call *call = le->data;
+            le = le->next;
+            ua_hangup(ua_to_remove, call, 0, "Account removed");
+        }
+
         ua_unregister(ua_to_remove);
-        mem_deref(ua_to_remove);
+
+        /* ua_destroy (not mem_deref) unlinks the UA so it stops taking
+         * calls, and emits BEVENT_SHUTDOWN so modules holding a reference
+         * (mwi) unsubscribe and let go of it */
+        ua_destroy(ua_to_remove);
     }
 
     /* Clear removing state (entry is already cleared above) */

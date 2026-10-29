@@ -141,6 +141,8 @@ final class AppViewModel: ObservableObject {
         var historyRecorded: Bool = false
         /// The user declined this incoming call (not counted as missed).
         var declinedByUser: Bool = false
+        /// The audio is encrypted (SRTP).
+        var isEncrypted: Bool = false
 
         /// Title and subtitle for the remote party, formatted per settings.
         var labels: (title: String, subtitle: String?) {
@@ -155,6 +157,9 @@ final class AppViewModel: ObservableObject {
 
     /// All active calls tracked by ID.
     @Published private(set) var activeCalls: [CallID: CallInfo] = [:]
+
+    /// Voicemail status reported by the server for the active account.
+    @Published private(set) var voicemailStatus: VoicemailStatus?
 
     // MARK: - Audio Device State
 
@@ -360,7 +365,19 @@ final class AppViewModel: ObservableObject {
         case .audioDeviceChanged:
             handleAudioDeviceChanged()
 
-        case .coreStateChanged, .mediaChanged:
+        case .mediaChanged(let callID, _, _, let encrypted):
+            if encrypted, var info = activeCalls[callID] {
+                info.isEncrypted = true
+                activeCalls[callID] = info
+            }
+
+        case .messageWaiting(let accountID, let status):
+            guard let account = activeAccount ?? connectingAccount,
+                  accountIDMapping[account.id] == accountID else { return }
+            voicemailStatus = status
+            updateDockBadge()
+
+        case .coreStateChanged:
             break
         }
     }
@@ -758,6 +775,7 @@ final class AppViewModel: ObservableObject {
             dtmfMode: dtmfMode.engineValue,
             registrationInterval: UInt32(max(60, account.registrationInterval)),
             natPinhole: account.natPinholeOverride ?? settings.natPinhole,
+            voicemailNotifications: account.voicemailNotifications,
             registerImmediately: true
         )
     }
@@ -765,6 +783,9 @@ final class AppViewModel: ObservableObject {
     /// Creates the account in the engine (replacing any previous instance) and registers it.
     private func registerAccountWithCore(_ account: SIPAccount, password: String) {
         removeAccountFromCore(account.id)
+        // A new registration subscribes again and gets a fresh status
+        voicemailStatus = nil
+        updateDockBadge()
 
         do {
             let bridgeID = try TonePhoneCore.shared.addAccount(configuration(for: account, password: password))
@@ -872,6 +893,8 @@ final class AppViewModel: ObservableObject {
         }
 
         activeAccount = nil
+        voicemailStatus = nil
+        updateDockBadge()
         clearCallState()
         activeCalls.removeAll()
         currentScreen = .accountList
@@ -946,6 +969,28 @@ final class AppViewModel: ObservableObject {
         let escaped = SIPAccount.escapeUserPart(user)
         guard let account = activeAccount else { return "sip:\(escaped)" }
         return "sip:\(escaped)@\(account.hostPort)"
+    }
+
+    /// Whether the active account has a voicemail number to call.
+    var canCallVoicemail: Bool {
+        guard let account = activeAccount else { return false }
+        return !account.voicemailNumber.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Calls the active account's voicemail.
+    func callVoicemail() {
+        guard canCallVoicemail, let account = activeAccount else { return }
+        dial(account.voicemailNumber)
+    }
+
+    /// Shows the number of new voicemail messages on the Dock icon.
+    private func updateDockBadge() {
+        guard let status = voicemailStatus, status.hasNewMessages else {
+            NSApp.dockTile.badgeLabel = nil
+            return
+        }
+        // Some servers only say that messages are waiting
+        NSApp.dockTile.badgeLabel = status.newMessages.map(String.init) ?? "•"
     }
 
     /// Dials a number, username or SIP address.

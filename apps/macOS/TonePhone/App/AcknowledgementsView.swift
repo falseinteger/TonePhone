@@ -1,5 +1,5 @@
 //
-//  LicensesSettingsView.swift
+//  AcknowledgementsView.swift
 //  TonePhone
 //
 //  Displays open source licenses for all dependencies.

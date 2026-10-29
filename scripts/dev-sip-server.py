@@ -4,7 +4,8 @@ Minimal SIP server for testing TonePhone locally. Development only.
 
 Acts as registrar and call peer on one UDP port, so the app can be exercised
 without a real provider: registration with digest authentication, incoming
-calls, outgoing calls (answered automatically), hold, and hang-up.
+calls, outgoing calls (answered automatically), hold, hang-up, and
+voicemail notifications (message-summary).
 
 Usage:
     scripts/dev-sip-server.py [--bind IP] [--port 5070] [--user alice] [--password secret]
@@ -18,16 +19,21 @@ Type commands on stdin while it runs:
     call [number] [name]   ring the registered client (default +14155550123 "Alice Johnson")
     cancel                 caller hangs up before answer (missed call)
     bye                    hang up the current call
+    voicemail N            report N new voicemail messages (0 clears)
     status                 show registration and calls
     quit
 
 Outgoing calls from the app are answered after 2 seconds. Dial a number
 starting with 486 to get Busy, 404 to get Not Found.
 
+Calls that offer SDES encryption (a=crypto) are answered with a key, so the
+app shows them as encrypted.
+
 Not a real SIP implementation: no retransmissions, no media (RTP).
 """
 
 import argparse
+import base64
 import hashlib
 import random
 import re
@@ -72,7 +78,19 @@ def all_headers(headers, name):
     return [v for k, v in headers if k.lower() == name.lower()]
 
 
-def sdp(host, port=40000):
+def sdp(host, port=40000, offer=""):
+    """SDP answer (or offer when `offer` is empty).
+
+    When the offer asks for SDES encryption (a=crypto), the answer accepts
+    the first suite with a random key, so the app reports the call as
+    encrypted. No RTP is sent either way.
+    """
+    proto = "RTP/SAVP" if "RTP/SAVP" in offer else "RTP/AVP"
+    crypto = ""
+    suite = re.search(r"a=crypto:(\d+) (\S+) ", offer)
+    if suite:
+        key = base64.b64encode(random.randbytes(30)).decode()
+        crypto = f"a=crypto:{suite.group(1)} {suite.group(2)} inline:{key}\r\n"
     # baresip ignores loopback addresses, so advertise the LAN address
     return (
         "v=0\r\n"
@@ -80,10 +98,11 @@ def sdp(host, port=40000):
         "s=-\r\n"
         f"c=IN IP4 {host}\r\n"
         "t=0 0\r\n"
-        f"m=audio {port} RTP/AVP 0 101\r\n"
+        f"m=audio {port} {proto} 0 101\r\n"
         "a=rtpmap:0 PCMU/8000\r\n"
         "a=rtpmap:101 telephone-event/8000\r\n"
         "a=sendrecv\r\n"
+        + crypto
     )
 
 
@@ -99,6 +118,8 @@ class Server:
         self.client = None          # (ip, port) of the registered client
         self.client_uri = None
         self.call = None            # dialog of the server-initiated call
+        self.mwi = None             # voicemail subscription dialog
+        self.new_messages = 0
         self.lock = threading.Lock()
 
     def log(self, text):
@@ -187,9 +208,65 @@ class Server:
             time.sleep(2)
             self.respond(headers, addr, 200, "OK",
                          [f"Contact: <sip:{number}@{self.host}:{self.port}>"],
-                         body=sdp(self.host, 40002), to_tag=tag)
+                         body=sdp(self.host, 40002, body), to_tag=tag)
             self.log(f"answered call to {number}")
         threading.Thread(target=answer, daemon=True).start()
+
+    # MARK: Voicemail (RFC 3842)
+
+    def on_subscribe(self, headers, addr):
+        if (header(headers, "Event") or "").split(";")[0].strip() != "message-summary":
+            self.respond(headers, addr, 489, "Bad Event")
+            return
+        expires = int(header(headers, "Expires") or 3600)
+        to_tag = re.search(r"tag=([^;]+)", header(headers, "To") or "")
+        to_tag = to_tag.group(1) if to_tag else rand()
+        contact = re.search(r"<([^>]+)>", header(headers, "Contact") or "")
+        self.respond(headers, addr, 200, "OK",
+                     [f"Contact: <sip:voicemail@{self.host}:{self.port}>", f"Expires: {expires}"],
+                     to_tag=to_tag)
+        if expires == 0:
+            self.mwi = None
+            self.log("voicemail subscription ended")
+            return
+        if not self.mwi or self.mwi["call_id"] != header(headers, "Call-ID"):
+            self.mwi = {"cseq": 0}
+        self.mwi.update({
+            "call_id": header(headers, "Call-ID"), "addr": addr,
+            "uri": contact.group(1) if contact else self.client_uri,
+            "local": header(headers, "To").split(";tag=")[0] + f";tag={to_tag}",
+            "remote": header(headers, "From"), "expires": expires,
+        })
+        self.log("client subscribed to voicemail")
+        self.notify_voicemail()
+
+    def notify_voicemail(self, count=None):
+        if count is not None:
+            self.new_messages = count
+        m = self.mwi
+        if not m:
+            self.log("no voicemail subscription; enable “Show new voicemail” for the account")
+            return
+        m["cseq"] += 1
+        body = (f"Messages-Waiting: {'yes' if self.new_messages else 'no'}\r\n"
+                f"Message-Account: sip:voicemail@{REALM}\r\n"
+                f"Voice-Message: {self.new_messages}/0 (0/0)\r\n")
+        lines = [
+            f"NOTIFY {m['uri']} SIP/2.0",
+            f"Via: SIP/2.0/UDP {self.host}:{self.port};branch=z9hG4bK{rand()};rport",
+            "Max-Forwards: 70",
+            f"From: {m['local']}",
+            f"To: {m['remote']}",
+            f"Call-ID: {m['call_id']}",
+            f"CSeq: {m['cseq']} NOTIFY",
+            f"Contact: <sip:voicemail@{self.host}:{self.port}>",
+            "Event: message-summary",
+            f"Subscription-State: active;expires={m['expires']}",
+            "Content-Type: application/simple-message-summary",
+            f"Content-Length: {len(body.encode())}",
+        ]
+        self.send("\r\n".join(lines) + "\r\n\r\n" + body, m["addr"])
+        self.log(f"sent voicemail status: {self.new_messages} new")
 
     # MARK: Calls to the client
 
@@ -295,10 +372,10 @@ class Server:
                 if self.call and header(headers, "Call-ID") == self.call["call_id"]:
                     # re-INVITE (hold/resume) on the server-initiated call
                     self.respond(headers, addr, 200, "OK",
-                                 [f"Contact: <sip:x@{self.host}:{self.port}>"], body=sdp(self.host, 40000))
+                                 [f"Contact: <sip:x@{self.host}:{self.port}>"], body=sdp(self.host, 40000, body))
                 elif "tag=" in (header(headers, "To") or ""):
                     self.respond(headers, addr, 200, "OK",
-                                 [f"Contact: <sip:x@{self.host}:{self.port}>"], body=sdp(self.host, 40002))
+                                 [f"Contact: <sip:x@{self.host}:{self.port}>"], body=sdp(self.host, 40002, body))
                 else:
                     self.on_invite(headers, body, addr)
             elif method in ("BYE", "CANCEL"):
@@ -308,7 +385,9 @@ class Server:
                 self.log(f"client sent {method}")
             elif method == "ACK":
                 pass
-            elif method in ("OPTIONS", "INFO", "NOTIFY", "SUBSCRIBE", "PUBLISH"):
+            elif method == "SUBSCRIBE":
+                self.on_subscribe(headers, addr)
+            elif method in ("OPTIONS", "INFO", "NOTIFY", "PUBLISH"):
                 self.respond(headers, addr, 200, "OK")
                 if method == "INFO":
                     self.log("received keypad tone (SIP INFO)")
@@ -352,12 +431,17 @@ def main():
             server.cancel()
         elif command == "bye":
             server.bye()
+        elif command == "voicemail":
+            try:
+                server.notify_voicemail(int(parts[1]) if len(parts) > 1 else 1)
+            except ValueError:
+                server.log("usage: voicemail N")
         elif command == "status":
             server.log(f"client: {server.client_uri or 'none'}, call: {server.call['number'] if server.call else 'none'}")
         elif command == "quit":
             break
         else:
-            server.log("commands: call [number] [name] | cancel | bye | status | quit")
+            server.log("commands: call [number] [name] | cancel | bye | voicemail N | status | quit")
 
 
 if __name__ == "__main__":

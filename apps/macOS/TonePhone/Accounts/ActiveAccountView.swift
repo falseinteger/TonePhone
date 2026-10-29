@@ -58,6 +58,17 @@ struct ActiveAccountView: View {
         .navigationTitle(viewModel.activeAccount?.title ?? "TonePhone")
         .navigationSubtitle(statusSubtitle)
         .toolbar {
+            if viewModel.canCallVoicemail {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        viewModel.callVoicemail()
+                    } label: {
+                        Label(voicemailLabel, systemImage: "recordingtape")
+                    }
+                    .help(voicemailLabel)
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     isKeypadPresented.toggle()
@@ -82,6 +93,16 @@ struct ActiveAccountView: View {
                 selectedTab = .calls
             }
         }
+    }
+
+    private var voicemailLabel: String {
+        guard let status = viewModel.voicemailStatus, status.hasNewMessages else {
+            return "Call Voicemail"
+        }
+        if let count = status.newMessages {
+            return count == 1 ? "Call Voicemail (1 new message)" : "Call Voicemail (\(count) new messages)"
+        }
+        return "Call Voicemail (new messages)"
     }
 
     private var statusSubtitle: String {

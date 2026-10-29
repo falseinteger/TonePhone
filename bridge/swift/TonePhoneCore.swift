@@ -309,6 +309,47 @@ public enum TonePhoneEvent: Sendable {
     case callStateChanged(CallID, CallState, CallEventDetails)
     case mediaChanged(CallID, audioEstablished: Bool, videoEstablished: Bool, encrypted: Bool)
     case audioDeviceChanged
+    case messageWaiting(AccountID, VoicemailStatus)
+}
+
+/// Voicemail status from a message-summary notification (RFC 3842).
+public struct VoicemailStatus: Sendable, Equatable {
+    public var hasNewMessages: Bool
+    /// New voice messages, nil when the server does not report a count.
+    public var newMessages: Int?
+    public var oldMessages: Int?
+
+    public init(hasNewMessages: Bool, newMessages: Int? = nil, oldMessages: Int? = nil) {
+        self.hasNewMessages = hasNewMessages
+        self.newMessages = newMessages
+        self.oldMessages = oldMessages
+    }
+
+    /// Parses `Messages-Waiting: yes` and `Voice-Message: 2/8 (0/0)`.
+    public init(summary: String) {
+        var waiting = false
+        var new: Int?
+        var old: Int?
+        for line in summary.split(whereSeparator: \.isNewline) {
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            switch name {
+            case "messages-waiting":
+                waiting = value.lowercased() == "yes"
+            case "voice-message":
+                let counts = value.split(separator: " ").first?.split(separator: "/") ?? []
+                if counts.count == 2 {
+                    new = Int(counts[0])
+                    old = Int(counts[1])
+                }
+            default:
+                break
+            }
+        }
+        self.init(hasNewMessages: waiting || (new ?? 0) > 0, newMessages: new, oldMessages: old)
+    }
 }
 
 // MARK: - Account Configuration
@@ -337,6 +378,8 @@ public struct AccountConfiguration: Sendable {
     /// Registration interval in seconds.
     public var registrationInterval: UInt32
     public var natPinhole: Bool
+    /// Subscribe to voicemail notifications.
+    public var voicemailNotifications: Bool
     public var registerImmediately: Bool
 
     public init(
@@ -352,6 +395,7 @@ public struct AccountConfiguration: Sendable {
         dtmfMode: String? = nil,
         registrationInterval: UInt32 = 3600,
         natPinhole: Bool = true,
+        voicemailNotifications: Bool = false,
         registerImmediately: Bool = true
     ) {
         self.sipURI = sipURI
@@ -366,6 +410,7 @@ public struct AccountConfiguration: Sendable {
         self.dtmfMode = dtmfMode
         self.registrationInterval = registrationInterval
         self.natPinhole = natPinhole
+        self.voicemailNotifications = voicemailNotifications
         self.registerImmediately = registerImmediately
     }
 }
@@ -374,9 +419,13 @@ public struct AccountConfiguration: Sendable {
 public struct CoreOptions: Sendable {
     /// Verify the SIP server certificate for TLS connections.
     public var verifyTLSServer: Bool
+    /// PEM file with extra certificate authorities to trust in addition to
+    /// the system ones, e.g. a provider's private CA.
+    public var additionalCAFile: String?
 
-    public init(verifyTLSServer: Bool = true) {
+    public init(verifyTLSServer: Bool = true, additionalCAFile: String? = nil) {
         self.verifyTLSServer = verifyTLSServer
+        self.additionalCAFile = additionalCAFile
     }
 }
 
@@ -447,12 +496,6 @@ public final class TonePhoneCore {
         // Ensure logs directory exists
         let effectiveLogPath = try logPath ?? createDefaultLogsDirectory()
 
-        // Verify config file exists
-        let configFile = URL(fileURLWithPath: effectiveConfigPath).appendingPathComponent("config")
-        print("TonePhoneCore: Using config path: \(effectiveConfigPath)")
-        print("TonePhoneCore: Config file exists: \(FileManager.default.fileExists(atPath: configFile.path))")
-        print("TonePhoneCore: Using log path: \(effectiveLogPath)")
-
         // Register event callback before init
         registerEventCallback()
 
@@ -493,7 +536,17 @@ public final class TonePhoneCore {
 
         // macOS ships the system root certificates as a PEM bundle; OpenSSL
         // cannot read the Keychain, so point it at this file for TLS.
-        let caFile = "/etc/ssl/cert.pem"
+        var caFile = "/etc/ssl/cert.pem"
+        if let extra = options.additionalCAFile, fileManager.fileExists(atPath: extra) {
+            // OpenSSL takes one CA file: combine the system roots with the extra ones
+            let bundle = configDir.appendingPathComponent("ca-bundle.pem")
+            var data = (try? Data(contentsOf: URL(fileURLWithPath: caFile))) ?? Data()
+            data.append(contentsOf: Array("\n".utf8))
+            data.append((try? Data(contentsOf: URL(fileURLWithPath: extra))) ?? Data())
+            if (try? data.write(to: bundle, options: .atomic)) != nil {
+                caFile = bundle.path
+            }
+        }
         let tlsLines: String
         if fileManager.fileExists(atPath: caFile) {
             tlsLines = """
@@ -521,6 +574,7 @@ public final class TonePhoneCore {
         module dtls_srtp.so
         module account.so
         module netroam.so
+        module mwi.so
 
         #------------------------------------------------------------
         # Audio
@@ -635,6 +689,11 @@ public final class TonePhoneCore {
         tp_log_set_sip_trace(enabled)
     }
 
+    /// Write an app message to the TonePhone log.
+    public nonisolated static func log(_ message: String, level: LogLevel = .info) {
+        tp_log_message(level.cLevel, "app: " + message)
+    }
+
     /// Flush log buffers to disk.
     ///
     /// Call this before exporting logs to ensure all messages are written.
@@ -673,6 +732,7 @@ public final class TonePhoneCore {
         config.dtmf_mode = cString(configuration.dtmfMode)
         config.reg_interval = configuration.registrationInterval
         config.nat_pinhole = configuration.natPinhole
+        config.mwi = configuration.voicemailNotifications
         config.register_on_add = configuration.registerImmediately
 
         guard config.sip_uri != nil else {
@@ -1063,6 +1123,13 @@ public final class TonePhoneCore {
 
         case TP_EVENT_AUDIO_DEVICE_CHANGED:
             swiftEvent = .audioDeviceChanged
+
+        case TP_EVENT_MESSAGE_WAITING:
+            let summary = event.data.mwi.summary.flatMap { String(cString: $0) } ?? ""
+            swiftEvent = .messageWaiting(
+                AccountID(rawValue: event.data.mwi.account_id),
+                VoicemailStatus(summary: summary)
+            )
 
         default:
             // Ignore unhandled event types (log)

@@ -228,6 +228,28 @@ struct InCallView: View {
         return false
     }
 
+    private var isEncrypted: Bool {
+        guard let id = viewModel.activeCallID else { return false }
+        return viewModel.activeCalls[id]?.isEncrypted ?? false
+    }
+
+    /// Shows whether the audio is encrypted. Unencrypted calls are only
+    /// pointed out when the account asks for encryption.
+    @ViewBuilder
+    private var encryptionLabel: some View {
+        if isEncrypted {
+            Label("Encrypted", systemImage: "lock.fill")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .help("The call audio is encrypted (SRTP).")
+        } else if let account = viewModel.activeAccount, account.mediaEncryption != .none {
+            Label("Not Encrypted", systemImage: "lock.open.fill")
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .help("The other side didn’t agree to encrypt the call audio.")
+        }
+    }
+
     /// Other calls ringing while this one is in progress.
     private var waitingCalls: [AppViewModel.CallInfo] {
         viewModel.activeCalls.values
@@ -263,6 +285,10 @@ struct InCallView: View {
                     .font(.title3.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
+
+                if isConnected {
+                    encryptionLabel
+                }
 
                 if !dtmfHistory.isEmpty {
                     Text(dtmfHistory)

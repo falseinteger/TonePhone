@@ -57,7 +57,7 @@ PLATFORMS=(
 # Baresip modules to enable (semicolon-separated for CMake)
 # Base modules (always enabled)
 # netroam re-binds SIP transports when the Mac changes networks or wakes
-BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account;netroam"
+BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account;netroam;mwi"
 # Opus module (enabled automatically if libopus is available)
 # To build libopus, run: ./scripts/build-opus.sh
 OPUS_AVAILABLE=false

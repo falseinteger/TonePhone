@@ -5,12 +5,27 @@
 //  Advanced settings: NAT traversal, SIP, security, diagnostics.
 //
 
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AdvancedSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @Environment(\.openWindow) private var openWindow
     @State private var showResetConfirmation = false
+
+    private func importCertificates() {
+        let panel = NSOpenPanel()
+        panel.message = "Choose a certificate file in PEM format."
+        panel.prompt = "Import"
+        panel.allowedContentTypes = [.x509Certificate, .data]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try settings.importAdditionalCertificates(from: url)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
 
     var body: some View {
         Form {
@@ -47,10 +62,25 @@ struct AdvancedSettingsView: View {
                 }
 
                 Toggle("Verify server certificates (TLS)", isOn: $settings.verifyTLSServer)
+
+                LabeledContent("Trusted certificates") {
+                    HStack {
+                        Text(settings.additionalCAFile == nil ? "System only" : "System and imported")
+                            .foregroundStyle(.secondary)
+                        if settings.additionalCAFile != nil {
+                            Button("Remove") {
+                                settings.removeAdditionalCertificates()
+                            }
+                        }
+                        Button("Import…") {
+                            importCertificates()
+                        }
+                    }
+                }
             } header: {
                 Text("SIP")
             } footer: {
-                Text(settings.dtmfMode.description + " Certificate verification changes take effect the next time TonePhone opens.")
+                Text(settings.dtmfMode.description + " Import a certificate if your provider uses its own certificate authority. Certificate changes take effect the next time TonePhone opens.")
                     .foregroundStyle(.secondary)
             }
 

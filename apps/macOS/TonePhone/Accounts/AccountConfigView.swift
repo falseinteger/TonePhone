@@ -53,6 +53,10 @@ struct AccountConfigView: View {
     @State private var natPinholeOverride: Bool?
     @State private var stunServerOverride = ""
 
+    // Voicemail
+    @State private var voicemailNumber = ""
+    @State private var voicemailNotifications = false
+
     // Delete confirmation
     @State private var showDeleteConfirmation = false
 
@@ -102,6 +106,16 @@ struct AccountConfigView: View {
                     Text("Leave the port empty to use the default. Your provider’s setup guide lists the server, transport and port.")
                         .foregroundStyle(.secondary)
                 }
+
+                Section {
+                    TextField("Voicemail number", text: $voicemailNumber, prompt: Text("None"))
+                    Toggle("Show new voicemail", isOn: $voicemailNotifications)
+                } header: {
+                    Text("Voicemail")
+                } footer: {
+                    Text("Your provider tells you the number to call for voicemail and whether it reports new messages.")
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
 
@@ -109,7 +123,7 @@ struct AccountConfigView: View {
 
             footer
         }
-        .frame(width: 460, height: showAdvanced ? 600 : 500)
+        .frame(width: 460, height: showAdvanced ? 640 : 560)
         .onAppear { loadExistingAccount() }
         .confirmationDialog(
             "Delete \(existingAccount?.title ?? "this account")?",
@@ -271,6 +285,8 @@ struct AccountConfigView: View {
         natMethodOverride = account.natMethodOverride
         natPinholeOverride = account.natPinholeOverride
         stunServerOverride = account.stunServerOverride ?? ""
+        voicemailNumber = account.voicemailNumber
+        voicemailNotifications = account.voicemailNotifications
 
         // Open the advanced group when something in it is customized
         showAdvanced = !account.authUsername.isEmpty || !account.outboundProxy.isEmpty ||
@@ -299,6 +315,8 @@ struct AccountConfigView: View {
             registrationInterval: registrationInterval,
             mediaEncryption: mediaEncryption,
             dialFormatOverride: dialFormatOverride,
+            voicemailNumber: voicemailNumber.trimmingCharacters(in: .whitespaces),
+            voicemailNotifications: voicemailNotifications,
             stunServerOverride: stun.isEmpty ? nil : stun,
             natMethodOverride: natMethodOverride,
             natPinholeOverride: natPinholeOverride,

@@ -87,6 +87,7 @@ typedef struct {
     const char *dtmf_mode;        /**< DTMF mode (optional): "rtpevent", "info", "auto" */
     uint32_t reg_interval;        /**< Registration interval in seconds (0 = 3600) */
     bool nat_pinhole;             /**< Enable NAT pinhole keep-alive (recommended for NAT) */
+    bool mwi;                     /**< Subscribe to voicemail notifications (message-summary) */
     bool register_on_add;         /**< Register immediately after adding */
 } tp_account_config_t;
 
@@ -104,6 +105,7 @@ typedef enum {
     TP_EVENT_CALL_MEDIA_CHANGED,      /**< Call media state changed */
     TP_EVENT_AUDIO_DEVICE_CHANGED,    /**< Audio device changed */
     TP_EVENT_LOG_MESSAGE,             /**< Log message */
+    TP_EVENT_MESSAGE_WAITING,         /**< Voicemail status received (MWI) */
 } tp_event_type_t;
 
 /**
@@ -176,8 +178,12 @@ typedef struct {
             tp_call_id_t id;
             bool audio_established;
             bool video_established;
-            bool encrypted;
+            bool encrypted;       /**< Audio stream is encrypted (SRTP) */
         } media;
+        struct {
+            tp_account_id_t account_id;
+            const char *summary;  /**< message-summary body (RFC 3842) */
+        } mwi;
         struct {
             tp_log_level_t level;
             const char *message;
@@ -424,6 +430,15 @@ tp_error_t tp_log_get_path(char *buf, size_t size);
  * @return TP_OK on success
  */
 tp_error_t tp_log_flush(void);
+
+/**
+ * @brief Write a message from the app to the TonePhone log
+ * @param level Message level
+ * @param message Message text (a trailing newline is added if missing)
+ *
+ * Thread-safe. Messages below the current log level are discarded.
+ */
+void tp_log_message(tp_log_level_t level, const char *message);
 
 /**
  * @brief Enable or disable SIP message tracing

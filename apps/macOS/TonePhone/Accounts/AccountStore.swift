@@ -78,6 +78,13 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     /// How dialed phone numbers are sent for this account. Nil uses the global setting.
     var dialFormatOverride: PhoneNumberDialFormat?
 
+    // MARK: - Voicemail
+
+    /// Number or address dialed to listen to voicemail. Empty means none.
+    var voicemailNumber: String
+    /// Ask the server to report new voicemail (message waiting indicator).
+    var voicemailNotifications: Bool
+
     // MARK: - Per-Account Overrides
 
     /// Override the global STUN server for this account.
@@ -107,6 +114,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         registrationInterval: Int = SIPAccount.defaultRegistrationInterval,
         mediaEncryption: MediaEncryption = .none,
         dialFormatOverride: PhoneNumberDialFormat? = nil,
+        voicemailNumber: String = "",
+        voicemailNotifications: Bool = false,
         stunServerOverride: String? = nil,
         natMethodOverride: NATMethod? = nil,
         natPinholeOverride: Bool? = nil,
@@ -124,6 +133,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         self.registrationInterval = registrationInterval
         self.mediaEncryption = mediaEncryption
         self.dialFormatOverride = dialFormatOverride
+        self.voicemailNumber = voicemailNumber
+        self.voicemailNotifications = voicemailNotifications
         self.stunServerOverride = stunServerOverride
         self.natMethodOverride = natMethodOverride
         self.natPinholeOverride = natPinholeOverride
@@ -135,6 +146,7 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case id, server, port, username, displayName, transport, autoLogin
         case authUsername, outboundProxy, registrationInterval, mediaEncryption, dialFormatOverride
+        case voicemailNumber, voicemailNotifications
         case stunServerOverride, natMethodOverride, natPinholeOverride, dtmfModeOverride
     }
 
@@ -155,6 +167,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
             ?? SIPAccount.defaultRegistrationInterval
         mediaEncryption = (try? c.decode(MediaEncryption.self, forKey: .mediaEncryption)) ?? .none
         dialFormatOverride = try? c.decode(PhoneNumberDialFormat.self, forKey: .dialFormatOverride)
+        voicemailNumber = try c.decodeIfPresent(String.self, forKey: .voicemailNumber) ?? ""
+        voicemailNotifications = try c.decodeIfPresent(Bool.self, forKey: .voicemailNotifications) ?? false
         stunServerOverride = try c.decodeIfPresent(String.self, forKey: .stunServerOverride)
         natMethodOverride = try? c.decode(NATMethod.self, forKey: .natMethodOverride)
         natPinholeOverride = try c.decodeIfPresent(Bool.self, forKey: .natPinholeOverride)
@@ -308,7 +322,7 @@ final class AccountStore {
             let accounts = try JSONDecoder().decode([SIPAccount].self, from: data)
             return accounts
         } catch {
-            print("Failed to load accounts: \(error)")
+            AppLog.error("Failed to load accounts: \(error)")
             return []
         }
     }
@@ -319,7 +333,7 @@ final class AccountStore {
             let data = try JSONEncoder().encode(accounts)
             try data.write(to: accountsFileURL, options: .atomic)
         } catch {
-            print("Failed to save accounts: \(error)")
+            AppLog.error("Failed to save accounts: \(error)")
         }
     }
 
@@ -406,7 +420,7 @@ final class AccountStore {
     private func savePasswordToKeychain(_ password: String, for accountID: UUID) {
         let key = accountID.uuidString
         guard let passwordData = password.data(using: .utf8) else {
-            print("Failed to encode password as UTF-8")
+            AppLog.error("Failed to encode password as UTF-8")
             return
         }
 
@@ -431,10 +445,10 @@ final class AccountStore {
             addQuery[kSecValueData as String] = passwordData
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             if addStatus != errSecSuccess {
-                print("Failed to save password to Keychain: \(addStatus)")
+                AppLog.error("Failed to save password to Keychain: \(addStatus)")
             }
         } else if updateStatus != errSecSuccess {
-            print("Failed to update password in Keychain: \(updateStatus)")
+            AppLog.error("Failed to update password in Keychain: \(updateStatus)")
         }
     }
 

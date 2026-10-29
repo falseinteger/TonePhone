@@ -300,15 +300,53 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     if (!cb)
         return;
 
+    /* MENC events also report verification requests; only the stream
+     * state says whether audio is actually encrypted */
+    struct audio *au = call_audio(call);
+    bool encrypted = au && stream_is_secure(audio_strm(au));
+
     tp_event_t tp_event = {
         .type = TP_EVENT_CALL_MEDIA_CHANGED,
         .data.media = {
             .id = get_call_id_for_call(call),
             .audio_established = (ev == BEVENT_CALL_RTPESTAB),
-            .video_established = false,  /* TODO: check video state */
-            .encrypted = (ev == BEVENT_CALL_MENC),
+            .video_established = false,
+            .encrypted = encrypted,
         },
     };
+
+    cb(&tp_event, ctx);
+}
+
+/**
+ * @brief Handle voicemail notifications from the mwi module
+ */
+static void handle_mwi_event(struct bevent *event)
+{
+    tp_event_callback_t cb;
+    void *ctx;
+
+    struct ua *ua = bevent_get_ua(event);
+    if (!ua)
+        return;
+
+    tp_account_id_t account_id = tp_account_find_id_by_ua(ua);
+    if (account_id == TP_INVALID_ID)
+        return;
+
+    tp_get_event_callback(&cb, &ctx);
+    if (!cb)
+        return;
+
+    tp_event_t tp_event = {
+        .type = TP_EVENT_MESSAGE_WAITING,
+        .data.mwi = {
+            .account_id = account_id,
+            .summary = bevent_get_text(event),
+        },
+    };
+
+    info("tp_events: voicemail status for account %u\n", account_id);
 
     cb(&tp_event, ctx);
 }
@@ -360,6 +398,10 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
         handle_media_event(ev, event);
         break;
 
+    case BEVENT_MWI_NOTIFY:
+        handle_mwi_event(event);
+        break;
+
     /* Core events - handled by tp_core.c */
     case BEVENT_SHUTDOWN:
     case BEVENT_EXIT:
@@ -368,7 +410,6 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 
     /* Events we don't forward (yet) */
     case BEVENT_CREATE:
-    case BEVENT_MWI_NOTIFY:
     case BEVENT_CALL_TRANSFER:
     case BEVENT_CALL_REDIRECT:
     case BEVENT_CALL_TRANSFER_FAILED:

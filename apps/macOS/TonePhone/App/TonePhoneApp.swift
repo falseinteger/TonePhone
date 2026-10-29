@@ -88,6 +88,13 @@ struct TonePhoneCommands: Commands {
         }
 
         CommandMenu("Call") {
+            Button("Call Voicemail") {
+                viewModel.callVoicemail()
+            }
+            .disabled(!viewModel.canCallVoicemail)
+
+            Divider()
+
             Button("Answer") {
                 viewModel.answerCall()
             }
@@ -139,6 +146,12 @@ struct TonePhoneCommands: Commands {
         }
 
         CommandGroup(before: .windowList) {
+            // Brings the main window back after it was closed
+            Button("TonePhone") {
+                MainWindow.show()
+            }
+            .keyboardShortcut("0")
+
             Button("Logs") {
                 openWindow(id: LogViewerView.windowID)
             }
@@ -226,6 +239,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keep running when the window closes so incoming calls still ring.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Clicking the Dock icon with no window open shows the main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            MainActor.assumeIsolated { MainWindow.show() }
+        }
+        return true
     }
 
     /// Unregister cleanly so the server stops routing calls to this Mac.

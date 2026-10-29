@@ -130,7 +130,7 @@ final class CallHistoryStore {
             decoder.dateDecodingStrategy = .iso8601
             return try decoder.decode([CallRecord].self, from: data)
         } catch {
-            print("Failed to load call history: \(error)")
+            AppLog.error("Failed to load call history: \(error)")
             return []
         }
     }
@@ -142,7 +142,7 @@ final class CallHistoryStore {
             let data = try encoder.encode(records)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            print("Failed to save call history: \(error)")
+            AppLog.error("Failed to save call history: \(error)")
         }
     }
 }

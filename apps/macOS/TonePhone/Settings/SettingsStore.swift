@@ -83,6 +83,7 @@ final class SettingsStore: ObservableObject {
         static let natPinhole = "settings.natPinhole"
         static let dtmfMode = "settings.dtmfMode"
         static let verifyTLSServer = "settings.verifyTLSServer"
+        static let additionalCAFile = "settings.additionalCAFile"
         static let advancedMode = "settings.advancedMode"
         static let sipTrace = "settings.sipTrace"
         static let registerOnStartup = "settings.registerOnStartup"
@@ -164,6 +165,14 @@ final class SettingsStore: ObservableObject {
     @Published var verifyTLSServer: Bool {
         didSet {
             defaults.set(verifyTLSServer, forKey: Keys.verifyTLSServer)
+        }
+    }
+
+    /// PEM file with extra certificate authorities, kept in Application
+    /// Support. Applies on next launch.
+    @Published private(set) var additionalCAFile: String? {
+        didSet {
+            defaults.set(additionalCAFile, forKey: Keys.additionalCAFile)
         }
     }
 
@@ -268,6 +277,7 @@ final class SettingsStore: ObservableObject {
         self.dtmfMode = DTMFMode(rawValue: dtmfModeString) ?? .rfc2833
 
         self.verifyTLSServer = defaults.object(forKey: Keys.verifyTLSServer) as? Bool ?? Defaults.verifyTLSServer
+        self.additionalCAFile = defaults.string(forKey: Keys.additionalCAFile)
         self.advancedMode = defaults.bool(forKey: Keys.advancedMode)
         self.sipTrace = defaults.bool(forKey: Keys.sipTrace)
 
@@ -305,7 +315,42 @@ final class SettingsStore: ObservableObject {
 
     /// Engine options written to the config file at start.
     var coreOptions: CoreOptions {
-        CoreOptions(verifyTLSServer: verifyTLSServer)
+        CoreOptions(verifyTLSServer: verifyTLSServer, additionalCAFile: additionalCAFile)
+    }
+
+    enum CertificateImportError: LocalizedError {
+        case notPEM
+
+        var errorDescription: String? {
+            "The file doesn’t contain certificates in PEM format."
+        }
+        var recoverySuggestion: String? {
+            "Choose a .pem or .crt file that starts with “-----BEGIN CERTIFICATE-----”."
+        }
+    }
+
+    /// Copies a PEM certificate file into Application Support and trusts it
+    /// for TLS from the next launch.
+    func importAdditionalCertificates(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        guard String(decoding: data, as: UTF8.self).contains("-----BEGIN CERTIFICATE-----") else {
+            throw CertificateImportError.notPEM
+        }
+        let directory = try FileManager.default
+            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("TonePhone", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = directory.appendingPathComponent("trusted-certificates.pem")
+        try data.write(to: destination, options: .atomic)
+        additionalCAFile = destination.path
+    }
+
+    /// Stops trusting the imported certificates.
+    func removeAdditionalCertificates() {
+        if let path = additionalCAFile {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        additionalCAFile = nil
     }
 
     /// Phone number settings changed; views that show numbers re-render.
