@@ -528,6 +528,15 @@ tp_error_t tp_audio_get_current_input(char *buf, size_t size);
 tp_error_t tp_audio_get_current_output(char *buf, size_t size);
 
 /**
+ * @brief Turn echo cancellation on or off for calls that start after this
+ * @param enabled true: one Voice Processing I/O unit plays and records, and
+ *        removes the far end's voice from the microphone (also reduces
+ *        noise). false: plain AudioUnit playback and recording.
+ * @return TP_OK, or TP_ERR_NOT_INITIALIZED before tp_init()
+ */
+tp_error_t tp_audio_set_echo_cancellation(bool enabled);
+
+/**
  * @brief Set the input device (microphone)
  * @param device_name Device name (empty string or NULL for system default)
  * @return TP_OK on success, error code otherwise

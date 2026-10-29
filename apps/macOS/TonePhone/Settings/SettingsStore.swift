@@ -88,6 +88,7 @@ final class SettingsStore: ObservableObject {
         static let sipTrace = "settings.sipTrace"
         static let registerOnStartup = "settings.registerOnStartup"
         static let selectedRingtone = "settings.selectedRingtone"
+        static let echoCancellation = "settings.echoCancellation"
     }
 
     // MARK: - Default Values
@@ -103,6 +104,7 @@ final class SettingsStore: ObservableObject {
         static let verifyTLSServer = true
         static let registerOnStartup = true
         static let selectedRingtone = "Ping.aiff"
+        static let echoCancellation = true
     }
 
     // MARK: - Published Properties
@@ -208,6 +210,14 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Remove the other person's voice from the microphone; applies from the next call.
+    @Published var echoCancellation: Bool {
+        didSet {
+            defaults.set(echoCancellation, forKey: Keys.echoCancellation)
+            TonePhoneCore.shared.setEchoCancellation(echoCancellation)
+        }
+    }
+
     /// Phone number region code for formatting (e.g. "US", "GB"). Empty means system locale.
     @Published var phoneNumberRegion: String {
         didSet {
@@ -290,6 +300,9 @@ final class SettingsStore: ObservableObject {
         }
 
         self.selectedRingtone = defaults.string(forKey: Keys.selectedRingtone) ?? Defaults.selectedRingtone
+        self.echoCancellation = defaults.object(forKey: Keys.echoCancellation) != nil
+            ? defaults.bool(forKey: Keys.echoCancellation)
+            : Defaults.echoCancellation
         self.phoneNumberRegion = defaults.string(forKey: PhoneNumberSettingsKey.region) ?? ""
         self.phoneNumberDisplayFormat = PhoneNumberService.displayFormat
         self.phoneNumberDialFormat = PhoneNumberService.dialFormat
@@ -313,6 +326,7 @@ final class SettingsStore: ObservableObject {
     func applyCoreSettings() {
         applyLogLevel()
         TonePhoneCore.shared.setSIPTraceEnabled(advancedMode && sipTrace)
+        TonePhoneCore.shared.setEchoCancellation(echoCancellation)
     }
 
     /// Engine options written to the config file at start.

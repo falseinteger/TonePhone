@@ -112,7 +112,7 @@ Priority codecs for TonePhone:
 
 | Module | Status | Platform |
 |--------|--------|----------|
-| audiounit | [x] | macOS, iOS |
+| audiounit | [x] | macOS, iOS (ringtone; calls with echo cancellation off) |
 | coreaudio | [x] | macOS (device enumeration) |
 
 ### Other Platforms (Not shipped in TonePhone)
@@ -133,7 +133,7 @@ Priority codecs for TonePhone:
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| webrtc_aec | [ ] | Echo cancellation. Important for speaker use. |
+| webrtc_aec | [—] | Not needed: the bridge's `vpio` driver uses Apple's Voice Processing I/O |
 | plc | [ ] | Packet loss concealment. Quality improvement. |
 | augain | [ ] | Volume adjustment. May be useful. |
 
