@@ -79,9 +79,21 @@ final class LogStore: ObservableObject {
     private var nextID = 0
     private var timer: Timer?
 
-    func start() {
+    /// Reads the log right away, so the table has its rows when it first
+    /// appears. Filling an empty table from onAppear made AppKit warn about
+    /// a reentrant operation in its NSTableView delegate.
+    init() {
         logPath = TonePhoneCore.shared.getLogFilePath()
         reload()
+    }
+
+    /// Follows new lines while the window is shown.
+    func start() {
+        if logPath == nil {
+            // The window was restored before logging started
+            logPath = TonePhoneCore.shared.getLogFilePath()
+            reload()
+        }
         timer?.invalidate()
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.readNewData() }
@@ -274,6 +286,12 @@ struct LogViewerView: View {
             .onChange(of: store.entries.count) { _ in
                 guard !isPaused, query.isEmpty, let last = visibleEntries.last else { return }
                 proxy.scrollTo(last.id, anchor: .bottom)
+            }
+            .onAppear {
+                // Open at the newest entry
+                if let last = visibleEntries.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
             }
             .overlay {
                 if visibleEntries.isEmpty {
