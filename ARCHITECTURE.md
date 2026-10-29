@@ -57,13 +57,20 @@ Thin adapters that connect baresip to Apple platform APIs:
 
 Adapters are minimal. They translate between platform APIs and what baresip expects.
 
+Today the macOS adapters live in the app target (`apps/macOS/TonePhone`):
+`IncomingCallManager` (notifications, ringtone, Dock attention), microphone
+permission handling in `AppViewModel`, and CoreAudio device enumeration in
+`bridge/src/tp_audio.c`. A separate `platform/` directory will be split out
+when the iOS app needs to share them.
+
 ### TonePhone Bridge
 
 The critical boundary between C and Swift. A stable C API that:
 
 - Hides baresip internals from Swift code
 - Provides a clean, versioned interface
-- Handles threading (events posted to main queue)
+- Handles threading: every call into baresip runs inside
+  `re_thread_enter()`/`re_thread_leave()`; events are posted to the main queue
 - Converts C data structures to Swift-friendly types
 
 Swift never imports baresip headers directly. All interaction goes through the bridge.
@@ -86,44 +93,31 @@ Apps are thin. They display state, accept input, and call bridge APIs. No SIP lo
 ```
 tonephone/
 ├── core/
-│   ├── re/                    # libre (git submodule)
-│   ├── rem/                   # librem (git submodule)
-│   ├── baresip/               # baresip (git submodule)
-│   ├── openssl/               # OpenSSL builds per platform
-│   └── patches/               # Patches to upstream (if any)
+│   ├── re/                    # libre (git submodule, upstream tag; includes librem)
+│   ├── baresip/               # baresip (git submodule, upstream tag)
+│   ├── patches/               # TonePhone patches applied to baresip at build time
+│   ├── openssl/               # OpenSSL builds per platform (generated)
+│   └── opus/                  # Opus builds per platform (generated)
 │
 ├── bridge/
-│   ├── include/               # Public C headers
-│   │   └── tp_bridge.h
-│   ├── src/                   # C implementation
-│   │   ├── tp_core.c
-│   │   ├── tp_account.c
-│   │   ├── tp_call.c
-│   │   └── tp_events.c
-│   └── swift/                 # Swift wrapper
-│       ├── TonePhoneCore.swift
-│       ├── Account.swift
-│       ├── Call.swift
-│       └── Events.swift
-│
-├── platform/
-│   └── apple/
-│       ├── audio/             # AudioUnit / AVAudioSession
-│       ├── permissions/       # Microphone, contacts
-│       └── lifecycle/         # App state handling
+│   ├── include/tp_bridge.h    # Public C API
+│   ├── src/                   # tp_core, tp_account, tp_call, tp_events, tp_audio, tp_log
+│   └── swift/TonePhoneCore.swift  # Swift wrapper and event publisher
 │
 ├── apps/
-│   ├── macOS/                 # macOS app target
-│   └── iOS/                   # iOS app target
+│   └── macOS/TonePhone/       # macOS app (SwiftUI); an iOS app is planned
+│       ├── App/               # entry point, menus, view model, logging
+│       ├── Accounts/          # account storage, list and editor
+│       ├── Calls/             # call window, recents, keypad, number formatting
+│       ├── Logs/              # log viewer and export
+│       └── Settings/          # settings window and store
 │
 ├── scripts/
-│   ├── build-core.sh
-│   └── package-xcframework.sh
+│   ├── build-openssl.sh, build-opus.sh, build-core.sh
+│   ├── package-xcframework.sh
+│   └── dev-sip-server.py      # Local SIP server for testing
 │
-└── docs/
-    ├── ARCHITECTURE.md
-    ├── BUILDING.md
-    └── ROADMAP.md
+└── docs/screenshots/          # README images
 ```
 
 ---
@@ -172,10 +166,16 @@ void tp_set_event_callback(tp_event_callback_t callback, void *ctx);
 ### Diagnostics
 
 ```c
-tp_error_t tp_get_call_stats(tp_call_id_t id, tp_call_stats_t *out_stats);
-tp_error_t tp_set_sip_trace(bool enabled);
-tp_error_t tp_export_logs(const char *path);
+tp_error_t tp_log_init(const char *log_dir);
+tp_error_t tp_log_set_level(tp_log_level_t level);
+tp_error_t tp_log_get_path(char *buf, size_t size);
+tp_error_t tp_log_flush(void);
+void tp_log_message(tp_log_level_t level, const char *message);  /* app messages */
+tp_error_t tp_log_set_sip_trace(bool enabled);   /* credentials redacted */
 ```
+
+Per-call statistics (codec, jitter, loss) are not exposed yet. The app
+exports the log file itself.
 
 ### Design Principles
 
@@ -183,7 +183,7 @@ tp_error_t tp_export_logs(const char *path);
 - Output parameters for created IDs
 - Opaque handles (IDs) instead of pointers
 - All strings are UTF-8, null-terminated
-- Thread-safe for calls from main thread
+- Thread-safe for calls from any thread; baresip is entered under the libre lock (lock order: re lock, then the bridge mutex)
 
 ---
 
@@ -197,10 +197,10 @@ Baresip is event-driven. TonePhone exposes a single event stream to the app laye
 enum TonePhoneEvent {
     case coreStateChanged(CoreState)
     case accountStateChanged(AccountID, AccountState)
-    case callStateChanged(CallID, CallState)
-    case callMediaChanged(CallID, MediaInfo)
-    case audioDeviceChanged(DeviceInfo)
-    case logMessage(LogLevel, String)
+    case callStateChanged(CallID, CallState, CallEventDetails)  // remote name, owning account
+    case mediaChanged(CallID, audioEstablished: Bool, videoEstablished: Bool, encrypted: Bool)
+    case audioDeviceChanged
+    case messageWaiting(AccountID, VoicemailStatus)   // RFC 3842 message-summary
 }
 ```
 
@@ -213,10 +213,10 @@ enum TonePhoneEvent {
 └─────────────┘     └─────────────┘     └─────────────┘
 ```
 
-1. Baresip core runs on a dedicated background thread
-2. Events are captured by bridge callbacks
-3. Bridge posts events to a serial queue
-4. Swift wrapper delivers events on main thread
+1. Baresip core runs `re_main` on a dedicated background thread
+2. Bridge calls from Swift take the libre lock (`re_thread_enter`) before touching baresip
+3. baresip events reach the bridge callback on the SIP thread; the Swift wrapper copies the data
+4. The wrapper re-posts each event with `DispatchQueue.main.async`, which keeps them in order
 
 **Rule: No direct UI calls from C code. Ever.**
 
@@ -224,11 +224,10 @@ enum TonePhoneEvent {
 
 ```swift
 // In the app
-TonePhoneCore.shared.events
-    .receive(on: DispatchQueue.main)
+TonePhoneCore.shared.events          // already delivered on the main thread
     .sink { event in
         switch event {
-        case .callStateChanged(let id, let state):
+        case .callStateChanged(let id, let state, _):
             updateCallUI(id: id, state: state)
         // ...
         }
@@ -265,9 +264,9 @@ Under the app container:
 
 ```
 ~/Library/Application Support/TonePhone/
-├── config                # baresip configuration file
+├── config                # baresip configuration, rewritten on every launch
 ├── accounts.json         # Account list (no secrets)
-├── history.json          # Call history (future)
+├── call_history.json     # Call history (per account, newest 100)
 └── logs/
     ├── tonephone.log     # Current log file
     ├── tonephone.log.1   # Rotated logs (up to .3)
@@ -314,15 +313,14 @@ logs/
 
 ### In-App Features
 
-- Log viewer with filtering
-- Copy log to clipboard
-- Export diagnostics bundle
-- Toggle SIP trace
-- View call statistics (codec, jitter, loss)
+- Log viewer window (Window › Logs) with level and SIP-message filters, search, pause
+- Copy selected entries; export the log file
+- Toggle SIP message tracing
+- Call statistics (codec, jitter, loss): not yet
 
-### Diagnostics Bundle
+### Diagnostics Bundle (planned)
 
-One-tap export creates a zip containing:
+A future one-step export will create a zip containing:
 
 - Sanitized logs (credentials redacted)
 - App version and build info

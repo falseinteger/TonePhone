@@ -7,38 +7,31 @@
 
 import SwiftUI
 
+/// Rows for a Form section: one field per server and an Add Server button.
 struct STUNServerListEditor: View {
     @Binding var servers: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(servers.enumerated()), id: \.offset) { index, _ in
-                HStack(spacing: 8) {
-                    TextField("stun:server:port", text: binding(for: index))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 12, design: .monospaced))
+        ForEach(servers.indices, id: \.self) { index in
+            HStack {
+                TextField("STUN server", text: binding(for: index), prompt: Text("stun.example.com:3478"))
+                    .labelsHidden()
 
-                    if servers.count > 1 {
-                        Button {
-                            servers.remove(at: index)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove server")
-                    }
+                Button {
+                    servers.remove(at: index)
+                } label: {
+                    Label("Remove Server", systemImage: "minus.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.borderless)
+                .disabled(servers.count <= 1)
+                .help("Remove server")
             }
+        }
 
-            Button {
-                servers.append("")
-            } label: {
-                Label("Add Server", systemImage: "plus.circle.fill")
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.accentColor)
+        Button("Add Server") {
+            servers.append("")
         }
     }
 
@@ -47,21 +40,9 @@ struct STUNServerListEditor: View {
             get: { servers.indices.contains(index) ? servers[index] : "" },
             set: { newValue in
                 if servers.indices.contains(index) {
-                    servers[index] = newValue
+                    servers[index] = newValue.trimmingCharacters(in: .whitespaces)
                 }
             }
         )
     }
-}
-
-#Preview("STUN Server List") {
-    struct Wrapper: View {
-        @State private var servers = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
-        var body: some View {
-            STUNServerListEditor(servers: $servers)
-                .padding()
-                .frame(width: 400)
-        }
-    }
-    return Wrapper()
 }

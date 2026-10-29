@@ -294,13 +294,139 @@ public struct CallID: Hashable, Sendable {
 
 // MARK: - Events
 
+/// Extra information delivered with every call state change.
+public struct CallEventDetails: Sendable, Equatable {
+    /// Remote display name from the SIP From/To header, if any.
+    public let remoteName: String?
+    /// Account that owns the call.
+    public let accountID: AccountID
+}
+
 /// Events emitted by TonePhoneCore.
 public enum TonePhoneEvent: Sendable {
     case coreStateChanged(CoreState)
     case accountStateChanged(AccountID, AccountState)
-    case callStateChanged(CallID, CallState)
+    case callStateChanged(CallID, CallState, CallEventDetails)
     case mediaChanged(CallID, audioEstablished: Bool, videoEstablished: Bool, encrypted: Bool)
     case audioDeviceChanged
+    case messageWaiting(AccountID, VoicemailStatus)
+}
+
+/// Voicemail status from a message-summary notification (RFC 3842).
+public struct VoicemailStatus: Sendable, Equatable {
+    public var hasNewMessages: Bool
+    /// New voice messages, nil when the server does not report a count.
+    public var newMessages: Int?
+    public var oldMessages: Int?
+
+    public init(hasNewMessages: Bool, newMessages: Int? = nil, oldMessages: Int? = nil) {
+        self.hasNewMessages = hasNewMessages
+        self.newMessages = newMessages
+        self.oldMessages = oldMessages
+    }
+
+    /// Parses `Messages-Waiting: yes` and `Voice-Message: 2/8 (0/0)`.
+    public init(summary: String) {
+        var waiting = false
+        var new: Int?
+        var old: Int?
+        for line in summary.split(whereSeparator: \.isNewline) {
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            switch name {
+            case "messages-waiting":
+                waiting = value.lowercased() == "yes"
+            case "voice-message":
+                let counts = value.split(separator: " ").first?.split(separator: "/") ?? []
+                if counts.count == 2 {
+                    new = Int(counts[0])
+                    old = Int(counts[1])
+                }
+            default:
+                break
+            }
+        }
+        self.init(hasNewMessages: waiting || (new ?? 0) > 0, newMessages: new, oldMessages: old)
+    }
+}
+
+// MARK: - Account Configuration
+
+/// Everything the SIP engine needs to create and register an account.
+///
+/// Optional strings are omitted from the account when nil or empty.
+public struct AccountConfiguration: Sendable {
+    /// Address of record, e.g. `sip:alice@example.com:5060`.
+    public var sipURI: String
+    public var password: String
+    public var displayName: String?
+    /// Authentication username when it differs from the URI user.
+    public var authUsername: String?
+    /// Outbound proxy URI, e.g. `sip:proxy.example.com;transport=tcp`.
+    public var outboundProxy: String?
+    /// `udp`, `tcp` or `tls`.
+    public var transport: String?
+    public var stunServer: String?
+    /// `stun` or `ice`.
+    public var mediaNAT: String?
+    /// `srtp`, `srtp-mand` or `dtls_srtp`.
+    public var mediaEncryption: String?
+    /// `rtpevent`, `info` or `auto`.
+    public var dtmfMode: String?
+    /// Registration interval in seconds.
+    public var registrationInterval: UInt32
+    public var natPinhole: Bool
+    /// Subscribe to voicemail notifications.
+    public var voicemailNotifications: Bool
+    public var registerImmediately: Bool
+
+    public init(
+        sipURI: String,
+        password: String,
+        displayName: String? = nil,
+        authUsername: String? = nil,
+        outboundProxy: String? = nil,
+        transport: String? = nil,
+        stunServer: String? = nil,
+        mediaNAT: String? = nil,
+        mediaEncryption: String? = nil,
+        dtmfMode: String? = nil,
+        registrationInterval: UInt32 = 3600,
+        natPinhole: Bool = true,
+        voicemailNotifications: Bool = false,
+        registerImmediately: Bool = true
+    ) {
+        self.sipURI = sipURI
+        self.password = password
+        self.displayName = displayName
+        self.authUsername = authUsername
+        self.outboundProxy = outboundProxy
+        self.transport = transport
+        self.stunServer = stunServer
+        self.mediaNAT = mediaNAT
+        self.mediaEncryption = mediaEncryption
+        self.dtmfMode = dtmfMode
+        self.registrationInterval = registrationInterval
+        self.natPinhole = natPinhole
+        self.voicemailNotifications = voicemailNotifications
+        self.registerImmediately = registerImmediately
+    }
+}
+
+/// Engine-wide options written to the baresip config file at start.
+public struct CoreOptions: Sendable {
+    /// Verify the SIP server certificate for TLS connections.
+    public var verifyTLSServer: Bool
+    /// PEM file with extra certificate authorities to trust in addition to
+    /// the system ones, e.g. a provider's private CA.
+    public var additionalCAFile: String?
+
+    public init(verifyTLSServer: Bool = true, additionalCAFile: String? = nil) {
+        self.verifyTLSServer = verifyTLSServer
+        self.additionalCAFile = additionalCAFile
+    }
 }
 
 // MARK: - TonePhoneCore
@@ -359,22 +485,16 @@ public final class TonePhoneCore {
     ///   - configPath: Optional path to configuration directory.
     ///   - logPath: Optional path to log file.
     /// - Throws: `TonePhoneError` if initialization or start fails.
-    public func start(configPath: String? = nil, logPath: String? = nil) throws {
+    public func start(options: CoreOptions = CoreOptions(), configPath: String? = nil, logPath: String? = nil) throws {
         guard !isInitialized else {
             throw TonePhoneError.alreadyInitialized
         }
 
         // Ensure config directory exists with minimal config
-        let effectiveConfigPath = try configPath ?? createDefaultConfigDirectory()
+        let effectiveConfigPath = try configPath ?? createDefaultConfigDirectory(options: options)
 
         // Ensure logs directory exists
         let effectiveLogPath = try logPath ?? createDefaultLogsDirectory()
-
-        // Verify config file exists
-        let configFile = URL(fileURLWithPath: effectiveConfigPath).appendingPathComponent("config")
-        print("TonePhoneCore: Using config path: \(effectiveConfigPath)")
-        print("TonePhoneCore: Config file exists: \(FileManager.default.fileExists(atPath: configFile.path))")
-        print("TonePhoneCore: Using log path: \(effectiveLogPath)")
 
         // Register event callback before init
         registerEventCallback()
@@ -399,78 +519,94 @@ public final class TonePhoneCore {
         }
     }
 
-    /// Creates a default config directory with minimal baresip configuration.
-    /// - Returns: Path to the created config directory.
-    private func createDefaultConfigDirectory() throws -> String {
+    /// Creates the config directory and writes the baresip configuration.
+    ///
+    /// The file is owned by the app and rewritten on every launch, so fixes
+    /// and new options reach existing installations.
+    /// - Returns: Path to the config directory.
+    private func createDefaultConfigDirectory(options: CoreOptions) throws -> String {
         let fileManager = FileManager.default
 
-        // Get Application Support directory
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw TonePhoneError.internalError
         }
 
         let configDir = appSupport.appendingPathComponent("TonePhone", isDirectory: true)
+        try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true)
 
-        // Create directory if needed
-        if !fileManager.fileExists(atPath: configDir.path) {
-            try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true)
+        // macOS ships the system root certificates as a PEM bundle; OpenSSL
+        // cannot read the Keychain, so point it at this file for TLS.
+        var caFile = "/etc/ssl/cert.pem"
+        if let extra = options.additionalCAFile, fileManager.fileExists(atPath: extra) {
+            // OpenSSL takes one CA file: combine the system roots with the extra ones.
+            // The config format ends a value at the first space, so the bundle
+            // can't live under "Application Support"; the per-user temporary
+            // directory has no spaces and the file is rewritten on every launch.
+            let bundle = fileManager.temporaryDirectory.appendingPathComponent("tonephone-ca-bundle.pem")
+            var data = (try? Data(contentsOf: URL(fileURLWithPath: caFile))) ?? Data()
+            data.append(contentsOf: Array("\n".utf8))
+            data.append((try? Data(contentsOf: URL(fileURLWithPath: extra))) ?? Data())
+            if (try? data.write(to: bundle, options: .atomic)) != nil {
+                caFile = bundle.path
+            }
         }
-
-        // Create minimal config file if it doesn't exist
-        let configFile = configDir.appendingPathComponent("config")
-        if !fileManager.fileExists(atPath: configFile.path) {
-            // Minimal config for statically-linked baresip
-            // Module lines are required to load static modules
-            let minimalConfig = """
-            # TonePhone configuration
-            # Audio-only SIP client - video modules are not included
-
-            #------------------------------------------------------------
-            # Modules (statically linked, .so extension is optional)
-            #------------------------------------------------------------
-            # Audio codecs
-            module g711.so
-            module opus.so
-
-            # Audio I/O (macOS/iOS native)
-            module audiounit.so
-
-            # NAT traversal
-            module stun.so
-            module turn.so
-            module ice.so
-
-            # Security (SRTP media encryption)
-            module srtp.so
-            module dtls_srtp.so
-
-            # Account management
-            module account.so
-
-            #------------------------------------------------------------
-            # Audio settings
-            #------------------------------------------------------------
-            audio_player audiounit
-            audio_source audiounit
-            audio_alert audiounit
-
-            # Codec priority (prefer Opus for quality, G.711 as fallback)
-            audio_codecs opus,g711
-
-            #------------------------------------------------------------
-            # SIP settings
-            #------------------------------------------------------------
-            sip_listen 0.0.0.0:0
-
-            #------------------------------------------------------------
-            # Call settings
-            #------------------------------------------------------------
-            # Accept incoming calls (required for incoming call handling)
-            call_accept yes
-
+        let tlsLines: String
+        if fileManager.fileExists(atPath: caFile) {
+            tlsLines = """
+            sip_cafile \(caFile)
+            sip_verify_server \(options.verifyTLSServer ? "yes" : "no")
             """
-            try minimalConfig.write(to: configFile, atomically: true, encoding: .utf8)
+        } else {
+            tlsLines = "sip_verify_server no"
         }
+
+        let config = """
+        # TonePhone configuration
+        # Generated by TonePhone on every launch. Edits will be overwritten.
+
+        #------------------------------------------------------------
+        # Modules (statically linked)
+        #------------------------------------------------------------
+        module g711.so
+        module opus.so
+        module audiounit.so
+        module stun.so
+        module turn.so
+        module ice.so
+        module srtp.so
+        module dtls_srtp.so
+        module account.so
+        module netroam.so
+        module mwi.so
+
+        #------------------------------------------------------------
+        # Audio
+        #------------------------------------------------------------
+        audio_player audiounit
+        audio_source audiounit
+        audio_alert audiounit
+
+        # Prefer Opus for quality, G.711 as fallback
+        audio_codecs opus,g711
+
+        #------------------------------------------------------------
+        # SIP
+        #------------------------------------------------------------
+        sip_listen 0.0.0.0:0
+        \(tlsLines)
+
+        # Re-register when the network changes (Wi-Fi switch, VPN, wake)
+        netroam_interval 10
+
+        #------------------------------------------------------------
+        # Calls
+        #------------------------------------------------------------
+        call_accept yes
+
+        """
+
+        let configFile = configDir.appendingPathComponent("config")
+        try config.write(to: configFile, atomically: true, encoding: .utf8)
 
         return configDir.path
     }
@@ -548,6 +684,19 @@ public final class TonePhoneCore {
         return String(cString: buffer)
     }
 
+    /// Enable or disable SIP message tracing in the log file.
+    ///
+    /// - Parameter enabled: When true, every SIP message is logged with
+    ///   credentials redacted.
+    public func setSIPTraceEnabled(_ enabled: Bool) {
+        tp_log_set_sip_trace(enabled)
+    }
+
+    /// Write an app message to the TonePhone log.
+    public nonisolated static func log(_ message: String, level: LogLevel = .info) {
+        tp_log_message(level.cLevel, "app: " + message)
+    }
+
     /// Flush log buffers to disk.
     ///
     /// Call this before exporting logs to ensure all messages are written.
@@ -559,79 +708,41 @@ public final class TonePhoneCore {
 
     /// Add a new SIP account.
     ///
-    /// - Parameters:
-    ///   - sipURI: The SIP URI (e.g., "sip:user@domain.com")
-    ///   - password: The SIP password
-    ///   - displayName: Optional display name
-    ///   - transport: Transport protocol ("udp", "tcp", or "tls")
-    ///   - stunServer: STUN server for NAT traversal (defaults to Google's STUN server)
-    ///   - medianat: NAT traversal method (defaults to "stun")
-    ///   - natPinhole: Enable NAT pinhole keep-alive (defaults to true for better NAT traversal)
-    ///   - registerImmediately: Whether to register immediately after adding
+    /// - Parameter configuration: Account settings.
     /// - Returns: The account ID assigned to the new account
     /// - Throws: `TonePhoneError` if adding the account fails
-    public func addAccount(
-        sipURI: String,
-        password: String,
-        displayName: String? = nil,
-        transport: String? = nil,
-        stunServer: String? = "stun:stun.l.google.com:19302",
-        medianat: String? = "stun",
-        natPinhole: Bool? = nil,
-        registerImmediately: Bool = true
-    ) throws -> AccountID {
-        // Collect all optional strings that need to live through the C call
-        let optionalStrings: [(String?, (inout tp_account_config_t, UnsafePointer<CChar>) -> Void)] = [
-            (displayName, { cfg, ptr in cfg.display_name = ptr }),
-            (transport, { cfg, ptr in cfg.transport = ptr }),
-            (stunServer, { cfg, ptr in cfg.stun_server = ptr }),
-            (medianat, { cfg, ptr in cfg.medianat = ptr }),
-        ]
+    public func addAccount(_ configuration: AccountConfiguration) throws -> AccountID {
+        // C strings must outlive the tp_account_add call; strdup and free after.
+        var allocated: [UnsafeMutablePointer<CChar>] = []
+        defer { allocated.forEach { free($0) } }
 
-        return try sipURI.withCString { sipURIPtr in
-            try password.withCString { passwordPtr in
-                var config = tp_account_config_t()
-                config.sip_uri = sipURIPtr
-                config.password = passwordPtr
-                config.register_on_add = registerImmediately
-                config.nat_pinhole = natPinhole ?? true
-                config.display_name = nil
-                config.auth_user = nil
-                config.outbound_proxy = nil
-                config.transport = nil
-                config.stun_server = nil
-                config.medianat = nil
-
-                return try withOptionalCStrings(optionalStrings, config: &config)
-            }
-        }
-    }
-
-    /// Helper to recursively handle optional C strings for account config.
-    private func withOptionalCStrings(
-        _ pairs: [(String?, (inout tp_account_config_t, UnsafePointer<CChar>) -> Void)],
-        config: inout tp_account_config_t
-    ) throws -> AccountID {
-        guard let (value, setter) = pairs.first else {
-            // Base case: all strings processed, make the C call
-            return try addAccountWithConfig(&config)
+        func cString(_ value: String?) -> UnsafePointer<CChar>? {
+            guard let value, !value.isEmpty, let copy = strdup(value) else { return nil }
+            allocated.append(copy)
+            return UnsafePointer(copy)
         }
 
-        let remaining = Array(pairs.dropFirst())
+        var config = tp_account_config_t()
+        config.sip_uri = cString(configuration.sipURI)
+        config.password = cString(configuration.password) ?? cString(" ")
+        config.display_name = cString(configuration.displayName)
+        config.auth_user = cString(configuration.authUsername)
+        config.outbound_proxy = cString(configuration.outboundProxy)
+        config.transport = cString(configuration.transport)
+        config.stun_server = cString(configuration.stunServer)
+        config.medianat = cString(configuration.mediaNAT)
+        config.media_encryption = cString(configuration.mediaEncryption)
+        config.dtmf_mode = cString(configuration.dtmfMode)
+        config.reg_interval = configuration.registrationInterval
+        config.nat_pinhole = configuration.natPinhole
+        config.mwi = configuration.voicemailNotifications
+        config.register_on_add = configuration.registerImmediately
 
-        if let value = value {
-            return try value.withCString { ptr in
-                setter(&config, ptr)
-                return try withOptionalCStrings(remaining, config: &config)
-            }
-        } else {
-            return try withOptionalCStrings(remaining, config: &config)
+        guard config.sip_uri != nil else {
+            throw TonePhoneError.invalidArgument
         }
-    }
 
-    private func addAccountWithConfig(_ config: inout tp_account_config_t) throws -> AccountID {
         var accountID: tp_account_id_t = TP_INVALID_ID
-
         let result = tp_account_add(&config, &accountID)
         guard result == TP_OK else {
             throw TonePhoneError(from: result)
@@ -995,9 +1106,14 @@ public final class TonePhoneCore {
         case TP_EVENT_CALL_STATE_CHANGED:
             let callID = CallID(rawValue: event.data.call.id)
             let remoteURI = event.data.call.remote_uri.flatMap { String(cString: $0) }
+            let remoteName = event.data.call.remote_name.flatMap { String(cString: $0) }
             let reason = event.data.call.reason.flatMap { String(cString: $0) }
             let state = CallState(from: event.data.call.state, remoteURI: remoteURI, reason: reason)
-            swiftEvent = .callStateChanged(callID, state)
+            let details = CallEventDetails(
+                remoteName: remoteName?.isEmpty == false ? remoteName : nil,
+                accountID: AccountID(rawValue: event.data.call.account_id)
+            )
+            swiftEvent = .callStateChanged(callID, state, details)
 
         case TP_EVENT_CALL_MEDIA_CHANGED:
             let callID = CallID(rawValue: event.data.media.id)
@@ -1011,17 +1127,28 @@ public final class TonePhoneCore {
         case TP_EVENT_AUDIO_DEVICE_CHANGED:
             swiftEvent = .audioDeviceChanged
 
+        case TP_EVENT_MESSAGE_WAITING:
+            let summary = event.data.mwi.summary.flatMap { String(cString: $0) } ?? ""
+            swiftEvent = .messageWaiting(
+                AccountID(rawValue: event.data.mwi.account_id),
+                VoicemailStatus(summary: summary)
+            )
+
         default:
             // Ignore unhandled event types (log)
             return
         }
 
-        // Dispatch to main actor for state updates and event publishing
-        Task { @MainActor in
-            if let state = newCoreState {
-                self.coreState = state
+        // Hop to the main queue. DispatchQueue.main is FIFO, so events keep
+        // the order the SIP stack produced them in (a Task per event does
+        // not guarantee ordering).
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                if let state = newCoreState {
+                    self.coreState = state
+                }
+                self.eventSubject.send(swiftEvent)
             }
-            self.eventSubject.send(swiftEvent)
         }
     }
 }
