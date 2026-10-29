@@ -538,8 +538,11 @@ public final class TonePhoneCore {
         // cannot read the Keychain, so point it at this file for TLS.
         var caFile = "/etc/ssl/cert.pem"
         if let extra = options.additionalCAFile, fileManager.fileExists(atPath: extra) {
-            // OpenSSL takes one CA file: combine the system roots with the extra ones
-            let bundle = configDir.appendingPathComponent("ca-bundle.pem")
+            // OpenSSL takes one CA file: combine the system roots with the extra ones.
+            // The config format ends a value at the first space, so the bundle
+            // can't live under "Application Support"; the per-user temporary
+            // directory has no spaces and the file is rewritten on every launch.
+            let bundle = fileManager.temporaryDirectory.appendingPathComponent("tonephone-ca-bundle.pem")
             var data = (try? Data(contentsOf: URL(fileURLWithPath: caFile))) ?? Data()
             data.append(contentsOf: Array("\n".utf8))
             data.append((try? Data(contentsOf: URL(fileURLWithPath: extra))) ?? Data())

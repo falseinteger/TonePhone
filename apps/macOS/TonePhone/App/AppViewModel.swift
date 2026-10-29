@@ -658,8 +658,11 @@ final class AppViewModel: ObservableObject {
                 message = "The server didn’t respond. Check the server address, port and transport (\(account.transport.displayName))."
             } else if lowered.contains("refused") {
                 message = "The server refused the connection. Check the port and transport (\(account.transport.displayName))."
-            } else if lowered.contains("certificate") || lowered.contains("tls") || lowered.contains("ssl") {
-                message = "A secure connection couldn’t be established. Check the server’s certificate, or turn off certificate verification in Settings › Advanced."
+            } else if lowered.contains("certificate") || lowered.contains("tls") || lowered.contains("ssl") ||
+                        (account.transport == .tls && lowered.contains("protocol error")) {
+                // A failed TLS handshake (e.g. an unknown certificate authority)
+                // only reaches us as a protocol error
+                message = "A secure connection couldn’t be established. If your provider uses its own certificate authority, import it in Settings › Advanced."
             } else if lowered.contains("resolve") || lowered.contains("dns") || lowered.contains("no such") ||
                         lowered.contains("not known") || lowered.contains("destination address required") {
                 message = "The server address couldn’t be found. Check the domain name."
