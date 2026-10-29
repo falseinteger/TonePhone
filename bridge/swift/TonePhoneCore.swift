@@ -692,6 +692,12 @@ public final class TonePhoneCore {
         tp_log_set_sip_trace(enabled)
     }
 
+    /// Use voice processing (echo cancellation, noise reduction) for calls
+    /// that start from now on.
+    public func setEchoCancellation(_ enabled: Bool) {
+        tp_audio_set_echo_cancellation(enabled)
+    }
+
     /// Write an app message to the TonePhone log.
     public nonisolated static func log(_ message: String, level: LogLevel = .info) {
         tp_log_message(level.cLevel, "app: " + message)

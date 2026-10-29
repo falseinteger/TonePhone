@@ -27,7 +27,7 @@ macOS is the primary platform. The C bridge and core libraries also build for iO
 - **Accounts:** UDP, TCP or TLS with certificate verification (system certificates plus your provider's own CA), custom port, authentication username, outbound proxy, registration interval, SRTP / DTLS-SRTP call encryption, STUN/ICE, per-account overrides; clear connection errors ("The username or password is incorrect.")
 - **Phone numbers:** choose how numbers are shown (international, national, compact, as received) and how they are dialed (international with or without plus, international prefix, national, as typed), per region and per account
 - **Recents:** per-account call history grouped like the Phone app, All Calls / Missed filter, search that also dials what you type, keypad popover (⌘K), switch accounts from the window title
-- **Audio:** pick speaker and microphone, live input level meter, ringtone choice
+- **Audio:** pick speaker and microphone, echo cancellation and noise reduction, live input level meter, ringtone choice
 - **Diagnostics:** log viewer with search and filters, optional SIP message tracing (credentials redacted), log export
 - **Reliability:** reconnects after sleep and network changes, unregisters cleanly on quit, keeps running in the background so calls still ring
 
