@@ -11,14 +11,19 @@
 //  Launch with `-TPAppearance dark` (or `light`) to check an appearance
 //  without changing the system setting.
 //
+//  `io.falseinteger.tonephone.dial` (object = number or SIP address) places
+//  a call as if it was typed, so calls can be tested without the keyboard.
+//
 
 #if DEBUG
 import AppKit
 
 enum DebugSnapshot {
     static let notificationName = Notification.Name("io.falseinteger.tonephone.snapshot")
+    static let dialNotificationName = Notification.Name("io.falseinteger.tonephone.dial")
 
     private static var observer: NSObjectProtocol?
+    private static var dialObserver: NSObjectProtocol?
 
     /// Starts listening for snapshot requests.
     static func install() {
@@ -35,6 +40,14 @@ enum DebugSnapshot {
         ) { notification in
             let prefix = notification.object as? String ?? NSTemporaryDirectory() + "tonephone"
             MainActor.assumeIsolated { capture(prefix: prefix) }
+        }
+        dialObserver = DistributedNotificationCenter.default().addObserver(
+            forName: dialNotificationName,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let number = notification.object as? String else { return }
+            MainActor.assumeIsolated { AppViewModel.shared.dial(number) }
         }
     }
 

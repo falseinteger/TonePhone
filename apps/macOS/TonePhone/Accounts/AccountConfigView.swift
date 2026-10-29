@@ -49,6 +49,7 @@ struct AccountConfigView: View {
     @State private var mediaEncryption: MediaEncryption = .none
     @State private var dialFormatOverride: PhoneNumberDialFormat?
     @State private var dtmfModeOverride: DTMFMode?
+    @State private var audioCodecs: [AudioCodec]?
     @State private var natMethodOverride: NATMethod?
     @State private var natPinholeOverride: Bool?
     @State private var stunServerOverride = ""
@@ -158,6 +159,8 @@ struct AccountConfigView: View {
                 Text(encryption.displayName).tag(encryption)
             }
         }
+
+        AudioCodecsRow(codecs: $audioCodecs)
 
         Picker("Dial numbers as", selection: $dialFormatOverride) {
             Text("Default (\(settings.phoneNumberDialFormat.displayName))").tag(PhoneNumberDialFormat?.none)
@@ -282,6 +285,7 @@ struct AccountConfigView: View {
         mediaEncryption = account.mediaEncryption
         dialFormatOverride = account.dialFormatOverride
         dtmfModeOverride = account.dtmfModeOverride
+        audioCodecs = account.audioCodecs
         natMethodOverride = account.natMethodOverride
         natPinholeOverride = account.natPinholeOverride
         stunServerOverride = account.stunServerOverride ?? ""
@@ -320,7 +324,8 @@ struct AccountConfigView: View {
             stunServerOverride: stun.isEmpty ? nil : stun,
             natMethodOverride: natMethodOverride,
             natPinholeOverride: natPinholeOverride,
-            dtmfModeOverride: dtmfModeOverride
+            dtmfModeOverride: dtmfModeOverride,
+            audioCodecs: audioCodecs
         )
 
         onSave?(account, password)

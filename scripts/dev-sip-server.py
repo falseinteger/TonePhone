@@ -197,7 +197,8 @@ class Server:
         number = re.search(r"sip:([^@>;]+)", to)
         number = number.group(1) if number else "?"
         tag = rand()
-        self.log(f"outgoing call to {number}")
+        codecs = ", ".join(dict.fromkeys(re.findall(r"a=rtpmap:\d+ ([^/\s]+)", body)))
+        self.log(f"outgoing call to {number}" + (f" (offers {codecs})" if codecs else ""))
         self.respond(headers, addr, 100, "Trying")
         if number.startswith("486"):
             self.respond(headers, addr, 486, "Busy Here", to_tag=tag)
