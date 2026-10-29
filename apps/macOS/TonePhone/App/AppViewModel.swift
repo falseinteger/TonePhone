@@ -222,8 +222,13 @@ final class AppViewModel: ObservableObject {
     /// Call start time for duration calculation.
     private var callStartTime: Date?
 
-    /// Pending cleanup work item to prevent stale timers affecting new calls.
-    private var pendingCleanupWorkItem: DispatchWorkItem?
+    /// Pending removal of each ended call, so ending one call never
+    /// cancels the removal of another.
+    private var pendingCleanups: [CallID: DispatchWorkItem] = [:]
+
+    /// An account whose settings changed during a call; it is set up again
+    /// once the calls end, because replacing it in the engine drops them.
+    private var pendingReregistrationID: UUID?
 
     /// Tracked account states by bridge ID.
     private var accountStates: [AccountID: AccountState] = [:]
@@ -317,6 +322,10 @@ final class AppViewModel: ObservableObject {
 
         if activeAccount?.id == id { activeAccount = account }
         if connectingAccount?.id == id { connectingAccount = account }
+        guard activeCalls.isEmpty else {
+            pendingReregistrationID = id
+            return
+        }
         registerAccountWithCore(account, password: password)
     }
 
@@ -481,7 +490,6 @@ final class AppViewModel: ObservableObject {
 
     /// Makes a call the displayed call and shows the call window.
     private func showCall(_ callInfo: CallInfo) {
-        cancelPendingCleanup()
         activeCallID = callInfo.id
         remotePartyURI = callInfo.remoteURI
         remotePartyName = callInfo.remoteName
@@ -528,30 +536,33 @@ final class AppViewModel: ObservableObject {
         callStartTime = nil
         callState = .idle
         stopCallDurationTimer()
-        cancelPendingCleanup()
     }
 
     /// Schedules removal of an ended call so its final state stays visible briefly.
     private func scheduleCallCleanup(callID: CallID, delay: TimeInterval = 1.0) {
-        cancelPendingCleanup()
+        pendingCleanups[callID]?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.pendingCleanupWorkItem = nil
+            self.pendingCleanups[callID] = nil
             self.activeCalls.removeValue(forKey: callID)
             if self.activeCallID == callID {
                 self.switchToNextCallOrClear()
             }
+            if self.activeCalls.isEmpty, let id = self.pendingReregistrationID {
+                self.pendingReregistrationID = nil
+                self.reregisterAccount(id: id)
+            }
         }
 
-        pendingCleanupWorkItem = workItem
+        pendingCleanups[callID] = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
-    /// Cancels any pending cleanup work item.
-    private func cancelPendingCleanup() {
-        pendingCleanupWorkItem?.cancel()
-        pendingCleanupWorkItem = nil
+    /// Cancels every pending removal; used when all calls are dropped at once.
+    private func cancelPendingCleanups() {
+        pendingCleanups.values.forEach { $0.cancel() }
+        pendingCleanups.removeAll()
     }
 
     /// Records a completed call in the call history.
@@ -834,6 +845,19 @@ final class AppViewModel: ObservableObject {
             activeAccount = nil
         }
 
+        // Reconnecting the account in use: register it again rather than
+        // replacing it, which would drop its calls
+        if activeAccount?.id == account.id, let bridgeID = accountIDMapping[account.id] {
+            accountStates[bridgeID] = .registering
+            updateRegistrationStatus()
+            do {
+                try TonePhoneCore.shared.registerAccount(bridgeID)
+            } catch {
+                errorMessage = "\(account.title) couldn’t reconnect: \(error.localizedDescription)"
+            }
+            return
+        }
+
         connectingAccount = account
         registerAccountWithCore(account, password: password)
     }
@@ -897,6 +921,7 @@ final class AppViewModel: ObservableObject {
         voicemailStatus = nil
         updateDockBadge()
         clearCallState()
+        cancelPendingCleanups()
         activeCalls.removeAll()
         CallWindow.close()
         currentScreen = .accountList
@@ -1012,7 +1037,6 @@ final class AppViewModel: ObservableObject {
                 return
             }
 
-            self.cancelPendingCleanup()
             self.holdAllActiveCalls()
 
             // Calls go out through the engine's default account; make sure

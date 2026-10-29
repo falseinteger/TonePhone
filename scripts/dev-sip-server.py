@@ -120,6 +120,7 @@ class Server:
         self.client = None          # (ip, port) of the registered client
         self.client_uri = None
         self.call = None            # dialog of the server-initiated call
+        self.pending = {}           # Call-ID -> (headers, addr, tag) of unanswered INVITEs
         self.mwi = None             # voicemail subscription dialog
         self.new_messages = 0
         self.lock = threading.Lock()
@@ -205,9 +206,13 @@ class Server:
             self.respond(headers, addr, 404, "Not Found", to_tag=tag)
             return
         self.respond(headers, addr, 180, "Ringing", to_tag=tag)
+        call_id = header(headers, "Call-ID")
+        self.pending[call_id] = (headers, addr, tag)
 
         def answer():
             time.sleep(2)
+            if self.pending.pop(call_id, None) is None:
+                return  # cancelled while ringing
             self.respond(headers, addr, 200, "OK",
                          [f"Contact: <sip:{number}@{self.host}:{self.port}>"],
                          body=sdp(self.host, 40002, body), to_tag=tag)
@@ -382,6 +387,9 @@ class Server:
                     self.on_invite(headers, body, addr)
             elif method in ("BYE", "CANCEL"):
                 self.respond(headers, addr, 200, "OK")
+                invite = self.pending.pop(header(headers, "Call-ID"), None) if method == "CANCEL" else None
+                if invite:
+                    self.respond(invite[0], invite[1], 487, "Request Terminated", to_tag=invite[2])
                 if self.call and header(headers, "Call-ID") == self.call["call_id"]:
                     self.call = None
                 self.log(f"client sent {method}")

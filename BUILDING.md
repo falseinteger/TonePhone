@@ -267,7 +267,7 @@ read them for exact CMake flags.
 
 ```bash
 ./scripts/build-openssl.sh            # once
-./scripts/build-opus.sh               # optional, enables the opus module
+./scripts/build-opus.sh               # once; the macOS app links libopus
 ./scripts/build-core.sh --clean       # libre + baresip for all platforms
 ./scripts/package-xcframework.sh      # output/xcframeworks/*.xcframework
 ```

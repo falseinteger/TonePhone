@@ -207,6 +207,8 @@ struct CallHistoryRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    // VoiceOver would read the arrow's symbol name
+                    .accessibilityLabel(spokenDetail)
             }
 
             Spacer(minLength: 4)
@@ -229,6 +231,13 @@ struct CallHistoryRow: View {
             return subtitle
         }
         return record.direction.title
+    }
+
+    /// The second line for VoiceOver: the kind of call instead of the arrow.
+    private var spokenDetail: String {
+        let kind = record.direction.title
+        let text = detail == kind ? kind : "\(kind), \(detail)"
+        return count > 1 ? "\(text), \(count) calls" : text
     }
 
     /// "3:16 PM", "Yesterday", "Tuesday" or a date, like the Phone app.

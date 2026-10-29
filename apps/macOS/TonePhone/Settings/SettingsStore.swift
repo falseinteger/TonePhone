@@ -188,6 +188,8 @@ final class SettingsStore: ObservableObject {
     @Published var sipTrace: Bool {
         didSet {
             defaults.set(sipTrace, forKey: Keys.sipTrace)
+            // Tracing is applied at launch only with diagnostics shown
+            if sipTrace && !advancedMode { advancedMode = true }
             TonePhoneCore.shared.setSIPTraceEnabled(sipTrace)
         }
     }

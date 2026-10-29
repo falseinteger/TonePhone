@@ -283,7 +283,7 @@ struct LogViewerView: View {
                         .lineLimit(entry.isSIPMessage ? nil : 4)
                 }
             }
-            .onChange(of: store.entries.count) { _ in
+            .onChange(of: store.entries.last?.id) { _ in
                 guard !isPaused, query.isEmpty, let last = visibleEntries.last else { return }
                 proxy.scrollTo(last.id, anchor: .bottom)
             }
