@@ -85,6 +85,7 @@ typedef struct {
     const char *medianat;         /**< NAT traversal method (optional, e.g., "ice", "stun") */
     const char *media_encryption; /**< Media encryption (optional): "srtp", "srtp-mand", "dtls_srtp" */
     const char *dtmf_mode;        /**< DTMF mode (optional): "rtpevent", "info", "auto" */
+    const char *audio_codecs;     /**< Offered codecs in order (optional, e.g. "opus/48000/2,PCMU/8000/1"); NULL = all */
     uint32_t reg_interval;        /**< Registration interval in seconds (0 = 3600) */
     bool nat_pinhole;             /**< Enable NAT pinhole keep-alive (recommended for NAT) */
     bool mwi;                     /**< Subscribe to voicemail notifications (message-summary) */
@@ -555,6 +556,15 @@ tp_error_t tp_audio_get_current_input(char *buf, size_t size);
  * Returns empty string if using system default.
  */
 tp_error_t tp_audio_get_current_output(char *buf, size_t size);
+
+/**
+ * @brief Turn echo cancellation on or off for calls that start after this
+ * @param enabled true: one Voice Processing I/O unit plays and records, and
+ *        removes the far end's voice from the microphone (also reduces
+ *        noise). false: plain AudioUnit playback and recording.
+ * @return TP_OK, or TP_ERR_NOT_INITIALIZED before tp_init()
+ */
+tp_error_t tp_audio_set_echo_cancellation(bool enabled);
 
 /**
  * @brief Set the input device (microphone)

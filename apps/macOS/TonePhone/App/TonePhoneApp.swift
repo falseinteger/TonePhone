@@ -27,7 +27,7 @@ struct TonePhoneApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
-        .defaultPosition(.topTrailing)
+        .defaultPosition(.center)
         .commandsRemoved()
 
         Window("Logs", id: LogViewerView.windowID) {

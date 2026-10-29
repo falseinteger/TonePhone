@@ -56,7 +56,7 @@ tonephone/
 ├── scripts/
 │   ├── build-core.sh          # Main build script
 │   ├── build-openssl.sh       # OpenSSL build helper
-│   ├── build-opus.sh          # Opus codec build helper (optional)
+│   ├── build-opus.sh          # Opus codec build (required by the app)
 │   └── package-xcframework.sh # XCFramework packaging
 └── apps/
     ├── macOS/
@@ -98,7 +98,7 @@ TonePhone builds baresip with a minimal, **audio-only** module set. Video suppor
 | Voicemail | `mwi` | Message waiting indication (new voicemail) |
 | Account | `account` | SIP account management |
 
-**Note:** The `opus` module is only enabled if libopus is built. See [Opus Setup](#opus-setup-optional) below.
+**Note:** The `opus` module is only enabled if libopus is built. See [Opus Setup](#opus-setup) below.
 
 ### Excluded Modules (Not Built)
 
@@ -202,9 +202,9 @@ Repeat for each architecture with appropriate target:
 
 ---
 
-## Opus Setup (Optional)
+## Opus Setup
 
-The Opus codec provides high-quality audio compression for VoIP. Building libopus is **optional** — if not present, baresip will be built with G.711 only.
+The Opus codec provides high-quality audio compression for VoIP. The macOS app links libopus, so build it before the core libraries. Without it, baresip itself still builds with G.711 only, but the app doesn't link.
 
 ### Using the Build Script (Recommended)
 

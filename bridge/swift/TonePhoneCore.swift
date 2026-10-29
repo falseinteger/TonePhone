@@ -399,6 +399,8 @@ public struct AccountConfiguration: Sendable {
     public var mediaEncryption: String?
     /// `rtpevent`, `info` or `auto`.
     public var dtmfMode: String?
+    /// Codecs to offer, in order, e.g. `opus/48000/2,PCMU/8000/1`. Nil offers all.
+    public var audioCodecs: String?
     /// Registration interval in seconds.
     public var registrationInterval: UInt32
     public var natPinhole: Bool
@@ -417,6 +419,7 @@ public struct AccountConfiguration: Sendable {
         mediaNAT: String? = nil,
         mediaEncryption: String? = nil,
         dtmfMode: String? = nil,
+        audioCodecs: String? = nil,
         registrationInterval: UInt32 = 3600,
         natPinhole: Bool = true,
         voicemailNotifications: Bool = false,
@@ -432,6 +435,7 @@ public struct AccountConfiguration: Sendable {
         self.mediaNAT = mediaNAT
         self.mediaEncryption = mediaEncryption
         self.dtmfMode = dtmfMode
+        self.audioCodecs = audioCodecs
         self.registrationInterval = registrationInterval
         self.natPinhole = natPinhole
         self.voicemailNotifications = voicemailNotifications
@@ -609,9 +613,7 @@ public final class TonePhoneCore {
         audio_player audiounit
         audio_source audiounit
         audio_alert audiounit
-
-        # Prefer Opus for quality, G.711 as fallback
-        audio_codecs opus,g711
+        # Codec order is set per account (AccountConfiguration.audioCodecs)
 
         #------------------------------------------------------------
         # SIP
@@ -716,6 +718,12 @@ public final class TonePhoneCore {
         tp_log_set_sip_trace(enabled)
     }
 
+    /// Use voice processing (echo cancellation, noise reduction) for calls
+    /// that start from now on.
+    public func setEchoCancellation(_ enabled: Bool) {
+        tp_audio_set_echo_cancellation(enabled)
+    }
+
     /// Write an app message to the TonePhone log.
     public nonisolated static func log(_ message: String, level: LogLevel = .info) {
         tp_log_message(level.cLevel, "app: " + message)
@@ -757,6 +765,7 @@ public final class TonePhoneCore {
         config.medianat = cString(configuration.mediaNAT)
         config.media_encryption = cString(configuration.mediaEncryption)
         config.dtmf_mode = cString(configuration.dtmfMode)
+        config.audio_codecs = cString(configuration.audioCodecs)
         config.reg_interval = configuration.registrationInterval
         config.nat_pinhole = configuration.natPinhole
         config.mwi = configuration.voicemailNotifications

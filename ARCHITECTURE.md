@@ -63,6 +63,14 @@ permission handling in `AppViewModel`, and CoreAudio device enumeration in
 `bridge/src/tp_audio.c`. A separate `platform/` directory will be split out
 when the iOS app needs to share them.
 
+`tp_audio.c` also registers the `vpio` audio driver that calls use by
+default. It runs one Voice Processing I/O unit for both playback and
+recording, which gives echo cancellation and noise reduction (baresip's
+audiounit module opens two separate units, so the voice processing unit
+there cannot see what it plays). It also opens the selected input and output
+devices; audiounit always uses the system defaults. With echo cancellation
+turned off in Settings, calls use audiounit; ringtones always do.
+
 ### TonePhone Bridge
 
 The critical boundary between C and Swift. A stable C API that:
@@ -339,6 +347,7 @@ A future one-step export will create a zip containing:
 
 - CoreAudio for audio device access
 - Full audio device selection UI
+- Echo cancellation and noise reduction (Voice Processing I/O)
 - Menubar mode planned for later
 - Multiple window support not prioritized
 - Hardened Runtime required for notarization

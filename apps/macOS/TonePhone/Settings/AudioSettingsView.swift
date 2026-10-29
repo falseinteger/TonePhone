@@ -36,6 +36,13 @@ struct AudioSettingsView: View {
             }
 
             Section {
+                Toggle("Echo cancellation", isOn: $settings.echoCancellation)
+            } footer: {
+                Text("Keeps the other person from hearing themselves when you use your Mac’s speakers, and reduces background noise. Changes apply from the next call.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 RingtonePickerView(selectedRingtone: $settings.selectedRingtone)
                 LabeledContent("Microphone access") {
                     microphoneStatusView

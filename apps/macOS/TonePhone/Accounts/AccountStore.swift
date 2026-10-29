@@ -48,6 +48,43 @@ enum MediaEncryption: String, Codable, CaseIterable {
     }
 }
 
+/// An audio codec the account can offer in calls.
+enum AudioCodec: String, Codable, CaseIterable, Identifiable {
+    case opus
+    case pcmu
+    case pcma
+
+    var id: Self { self }
+
+    /// Offered in this order unless the account says otherwise.
+    static let defaultOrder: [AudioCodec] = allCases
+
+    var displayName: String {
+        switch self {
+        case .opus: return "Opus"
+        case .pcmu: return "G.711 µ-law"
+        case .pcma: return "G.711 A-law"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .opus: return "Best quality, adapts to the network."
+        case .pcmu: return "Supported everywhere. Common in North America and Japan."
+        case .pcma: return "Supported everywhere. Common in Europe and elsewhere."
+        }
+    }
+
+    /// Name, sample rate and channels as the SIP engine looks codecs up.
+    var engineValue: String {
+        switch self {
+        case .opus: return "opus/48000/2"
+        case .pcmu: return "PCMU/8000/1"
+        case .pcma: return "PCMA/8000/1"
+        }
+    }
+}
+
 /// Represents a SIP account configuration.
 struct SIPAccount: Codable, Identifiable, Equatable {
     /// Unique identifier for the account.
@@ -95,6 +132,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var natPinholeOverride: Bool?
     /// Override the global DTMF mode for this account.
     var dtmfModeOverride: DTMFMode?
+    /// Codecs to offer, in order; nil offers all in the default order.
+    var audioCodecs: [AudioCodec]?
 
     /// Default registration interval. Short enough to keep NAT bindings
     /// alive on typical home routers.
@@ -119,7 +158,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         stunServerOverride: String? = nil,
         natMethodOverride: NATMethod? = nil,
         natPinholeOverride: Bool? = nil,
-        dtmfModeOverride: DTMFMode? = nil
+        dtmfModeOverride: DTMFMode? = nil,
+        audioCodecs: [AudioCodec]? = nil
     ) {
         self.id = id
         self.server = server
@@ -139,6 +179,7 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         self.natMethodOverride = natMethodOverride
         self.natPinholeOverride = natPinholeOverride
         self.dtmfModeOverride = dtmfModeOverride
+        self.audioCodecs = audioCodecs
     }
 
     // MARK: - Codable
@@ -148,6 +189,7 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         case authUsername, outboundProxy, registrationInterval, mediaEncryption, dialFormatOverride
         case voicemailNumber, voicemailNotifications
         case stunServerOverride, natMethodOverride, natPinholeOverride, dtmfModeOverride
+        case audioCodecs
     }
 
     /// Decodes leniently so accounts saved by older versions keep loading:
@@ -173,6 +215,10 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         natMethodOverride = try? c.decode(NATMethod.self, forKey: .natMethodOverride)
         natPinholeOverride = try c.decodeIfPresent(Bool.self, forKey: .natPinholeOverride)
         dtmfModeOverride = try? c.decode(DTMFMode.self, forKey: .dtmfModeOverride)
+        // Codecs this version doesn't know are dropped
+        let names = (try? c.decodeIfPresent([String].self, forKey: .audioCodecs)) ?? nil
+        let codecs = names?.compactMap(AudioCodec.init(rawValue:))
+        audioCodecs = codecs?.isEmpty == false ? codecs : nil
     }
 
     // MARK: - Addresses
@@ -238,7 +284,8 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         stunServerOverride != nil ||
         natMethodOverride != nil ||
         natPinholeOverride != nil ||
-        dtmfModeOverride != nil
+        dtmfModeOverride != nil ||
+        audioCodecs != nil
     }
 
     // MARK: - Helpers
