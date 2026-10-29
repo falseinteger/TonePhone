@@ -250,12 +250,14 @@ struct LogViewerView: View {
                     Text(entry.time.split(separator: " ").last.map(String.init) ?? entry.time)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
                 .width(min: 64, ideal: 70, max: 90)
 
                 TableColumn("Level") { entry in
                     Label(entry.level.title, systemImage: entry.level.symbolName)
                         .foregroundStyle(entry.level.color)
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
                 .width(min: 70, ideal: 84, max: 100)
 
@@ -286,7 +288,8 @@ struct LogViewerView: View {
                         Text(scope.rawValue).tag(scope)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
+                .fixedSize()
                 .help("Filter log entries")
             }
 

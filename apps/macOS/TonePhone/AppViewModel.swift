@@ -645,12 +645,11 @@ final class AppViewModel: ObservableObject {
                 message = "The server refused the connection. Check the port and transport (\(account.transport.displayName))."
             } else if lowered.contains("certificate") || lowered.contains("tls") || lowered.contains("ssl") {
                 message = "A secure connection couldn’t be established. Check the server’s certificate, or turn off certificate verification in Settings › Advanced."
-            } else if lowered.contains("resolve") || lowered.contains("dns") || lowered.contains("no such") || lowered.contains("not known") {
+            } else if lowered.contains("resolve") || lowered.contains("dns") || lowered.contains("no such") ||
+                        lowered.contains("not known") || lowered.contains("destination address required") {
                 message = "The server address couldn’t be found. Check the domain name."
             } else if lowered.contains("unreachable") || lowered.contains("no route") || lowered.contains("network is down") {
                 message = "The network is unavailable. Check your internet connection."
-            } else if raw.isEmpty {
-                message = "Registration failed."
             } else {
                 message = "Registration failed."
             }
