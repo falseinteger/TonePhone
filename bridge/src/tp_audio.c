@@ -10,6 +10,7 @@
 #include "tp_bridge.h"
 
 #include <re.h>
+#include <rem.h>
 #include <baresip.h>
 
 #include <string.h>
@@ -265,6 +266,523 @@ static void on_device_change(void)
     info("tp_audio: audio devices changed\n");
 }
 
+
+/**
+ * @brief Find a device by name
+ * @return The device ID, or kAudioObjectUnknown when no device has that name
+ */
+static AudioDeviceID find_device_id(const char *name, bool is_input)
+{
+    AudioDeviceID found = kAudioObjectUnknown;
+    UInt32 size = 0;
+    AudioDeviceID *ids;
+    char dev_name[128];
+
+    if (!name || !name[0]) {
+        return kAudioObjectUnknown;
+    }
+
+    AudioObjectPropertyAddress addr = {
+        .mSelector = kAudioHardwarePropertyDevices,
+        .mScope = kAudioObjectPropertyScopeGlobal,
+        .mElement = kAudioObjectPropertyElementMain,
+    };
+
+    if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &addr,
+                                       0, NULL, &size) != noErr || !size) {
+        return kAudioObjectUnknown;
+    }
+
+    ids = malloc(size);
+    if (!ids) {
+        return kAudioObjectUnknown;
+    }
+
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr,
+                                   0, NULL, &size, ids) == noErr) {
+        for (uint32_t i = 0; i < size / sizeof(AudioDeviceID); i++) {
+            if (device_has_scope(ids[i], is_input) &&
+                get_device_name(ids[i], dev_name, sizeof(dev_name)) &&
+                strcmp(dev_name, name) == 0) {
+                found = ids[i];
+                break;
+            }
+        }
+    }
+
+    free(ids);
+    return found;
+}
+
+/* =============================================================================
+ * Voice Processing Audio Driver ("vpio")
+ *
+ * baresip's audiounit module opens separate AudioUnits for playback and
+ * recording, so the Voice Processing I/O unit could not cancel echo: it can
+ * only remove what it plays itself from what it records. This driver runs
+ * one VoiceProcessingIO unit per call, shared by the player and the source,
+ * which gives echo cancellation, noise suppression and level control.
+ * It also honors the selected input and output devices.
+ * ============================================================================= */
+
+#define VPIO_MAX_FRAMES 4096
+
+/* The shared unit; exists while a player or source is open */
+struct vpio {
+    AudioUnit au;
+    mtx_t mutex;              /* Held by the I/O callbacks */
+    struct auplay_st *play;
+    struct ausrc_st *src;
+    uint8_t *inbuf;
+    AudioDeviceID in_dev;
+    AudioDeviceID out_dev;
+};
+
+struct auplay_st {
+    struct vpio *vp;
+    struct auplay_prm prm;
+    size_t sampsz;
+    uint64_t frames;
+    auplay_write_h *wh;
+    void *arg;
+};
+
+struct ausrc_st {
+    struct vpio *vp;
+    struct ausrc_prm prm;
+    size_t sampsz;
+    uint64_t frames;
+    ausrc_read_h *rh;
+    void *arg;
+};
+
+static struct vpio *g_vpio;
+static struct auplay *g_vpio_play;
+static struct ausrc *g_vpio_src;
+
+static void vpio_stream_format(AudioStreamBasicDescription *fmt,
+                               enum aufmt aufmt, uint32_t srate,
+                               uint8_t ch, size_t sampsz)
+{
+    memset(fmt, 0, sizeof(*fmt));
+    fmt->mSampleRate = srate;
+    fmt->mFormatID = kAudioFormatLinearPCM;
+    fmt->mFormatFlags = (aufmt == AUFMT_FLOAT ? kLinearPCMFormatFlagIsFloat
+                                              : kLinearPCMFormatFlagIsSignedInteger)
+                        | kAudioFormatFlagIsPacked;
+    fmt->mBitsPerChannel = (UInt32)(8 * sampsz);
+    fmt->mChannelsPerFrame = ch;
+    fmt->mBytesPerFrame = (UInt32)(sampsz * ch);
+    fmt->mFramesPerPacket = 1;
+    fmt->mBytesPerPacket = (UInt32)(sampsz * ch);
+}
+
+static OSStatus vpio_input_cb(void *ref, AudioUnitRenderActionFlags *flags,
+                              const AudioTimeStamp *ts, UInt32 bus,
+                              UInt32 nframes, AudioBufferList *data)
+{
+    struct vpio *vp = ref;
+    struct ausrc_st *st;
+    AudioBufferList abl;
+    struct auframe af;
+    OSStatus ret = noErr;
+
+    (void)data;
+
+    mtx_lock(&vp->mutex);
+
+    st = vp->src;
+    if (!st || !st->rh || nframes > VPIO_MAX_FRAMES)
+        goto out;
+
+    abl.mNumberBuffers = 1;
+    abl.mBuffers[0].mNumberChannels = st->prm.ch;
+    abl.mBuffers[0].mDataByteSize = (UInt32)(nframes * st->prm.ch * st->sampsz);
+    abl.mBuffers[0].mData = vp->inbuf;
+
+    ret = AudioUnitRender(vp->au, flags, ts, bus, nframes, &abl);
+    if (ret != noErr)
+        goto out;
+
+    auframe_init(&af, st->prm.fmt, abl.mBuffers[0].mData,
+                 abl.mBuffers[0].mDataByteSize / st->sampsz,
+                 st->prm.srate, st->prm.ch);
+    af.timestamp = st->frames * AUDIO_TIMEBASE / st->prm.srate;
+    st->frames += af.sampc / st->prm.ch;
+
+    st->rh(&af, st->arg);
+
+ out:
+    mtx_unlock(&vp->mutex);
+    return ret;
+}
+
+static OSStatus vpio_output_cb(void *ref, AudioUnitRenderActionFlags *flags,
+                               const AudioTimeStamp *ts, UInt32 bus,
+                               UInt32 nframes, AudioBufferList *data)
+{
+    struct vpio *vp = ref;
+    struct auplay_st *st;
+
+    (void)ts;
+    (void)bus;
+    (void)nframes;
+
+    mtx_lock(&vp->mutex);
+
+    st = vp->play;
+    for (UInt32 i = 0; i < data->mNumberBuffers; i++) {
+        AudioBuffer *ab = &data->mBuffers[i];
+        struct auframe af;
+
+        if (!st || !st->wh) {
+            memset(ab->mData, 0, ab->mDataByteSize);
+            *flags |= kAudioUnitRenderAction_OutputIsSilence;
+            continue;
+        }
+
+        auframe_init(&af, st->prm.fmt, ab->mData,
+                     ab->mDataByteSize / st->sampsz,
+                     st->prm.srate, st->prm.ch);
+        af.timestamp = st->frames * AUDIO_TIMEBASE / st->prm.srate;
+        st->frames += af.sampc / st->prm.ch;
+
+        st->wh(&af, st->arg);
+    }
+
+    mtx_unlock(&vp->mutex);
+    return noErr;
+}
+
+/**
+ * @brief Log the devices the unit actually uses
+ */
+static void vpio_log_devices(struct vpio *vp)
+{
+    AudioDeviceID dev[2] = {kAudioObjectUnknown, kAudioObjectUnknown};
+    char name[2][128] = {"?", "?"};
+
+    for (int i = 0; i < 2; i++) {
+        UInt32 size = sizeof(dev[i]);
+        if (AudioUnitGetProperty(vp->au, kAudioOutputUnitProperty_CurrentDevice,
+                                 kAudioUnitScope_Global, (AudioUnitElement)i,
+                                 &dev[i], &size) == noErr) {
+            get_device_name(dev[i], name[i], sizeof(name[i]));
+        }
+    }
+
+    info("tp_audio: vpio: input '%s', output '%s'\n", name[1], name[0]);
+}
+
+/**
+ * @brief Apply the open player/source formats and devices, then (re)start
+ *
+ * Formats and devices can only change while the unit is uninitialized,
+ * so every open or close of the player or source restarts the unit.
+ */
+static int vpio_restart(struct vpio *vp)
+{
+    AudioStreamBasicDescription fmt;
+    OSStatus ret;
+
+    AudioOutputUnitStop(vp->au);
+    AudioUnitUninitialize(vp->au);
+
+    if (!vp->play && !vp->src)
+        return 0;
+
+    /* Devices: unknown means the system default */
+    if (vp->in_dev != kAudioObjectUnknown) {
+        ret = AudioUnitSetProperty(vp->au, kAudioOutputUnitProperty_CurrentDevice,
+                                   kAudioUnitScope_Global, 1,
+                                   &vp->in_dev, sizeof(vp->in_dev));
+        if (ret)
+            warning("tp_audio: vpio: can't use input device (%d)\n", (int)ret);
+    }
+    if (vp->out_dev != kAudioObjectUnknown) {
+        ret = AudioUnitSetProperty(vp->au, kAudioOutputUnitProperty_CurrentDevice,
+                                   kAudioUnitScope_Global, 0,
+                                   &vp->out_dev, sizeof(vp->out_dev));
+        if (ret)
+            warning("tp_audio: vpio: can't use output device (%d)\n", (int)ret);
+    }
+
+    /* The side without a stream gets the other side's format */
+    if (vp->play)
+        vpio_stream_format(&fmt, vp->play->prm.fmt, vp->play->prm.srate,
+                           vp->play->prm.ch, vp->play->sampsz);
+    else
+        vpio_stream_format(&fmt, vp->src->prm.fmt, vp->src->prm.srate,
+                           vp->src->prm.ch, vp->src->sampsz);
+    ret = AudioUnitSetProperty(vp->au, kAudioUnitProperty_StreamFormat,
+                               kAudioUnitScope_Input, 0, &fmt, sizeof(fmt));
+    if (ret)
+        goto out;
+
+    if (vp->src)
+        vpio_stream_format(&fmt, vp->src->prm.fmt, vp->src->prm.srate,
+                           vp->src->prm.ch, vp->src->sampsz);
+    ret = AudioUnitSetProperty(vp->au, kAudioUnitProperty_StreamFormat,
+                               kAudioUnitScope_Output, 1, &fmt, sizeof(fmt));
+    if (ret)
+        goto out;
+
+    ret = AudioUnitInitialize(vp->au);
+    if (ret)
+        goto out;
+
+    ret = AudioOutputUnitStart(vp->au);
+    if (ret)
+        goto out;
+
+    vpio_log_devices(vp);
+
+ out:
+    if (ret) {
+        warning("tp_audio: vpio: start failed (%d)\n", (int)ret);
+        return ENODEV;
+    }
+
+    return 0;
+}
+
+static void vpio_destructor(void *arg)
+{
+    struct vpio *vp = arg;
+
+    if (vp->au) {
+        AudioOutputUnitStop(vp->au);
+        AudioUnitUninitialize(vp->au);
+        AudioComponentInstanceDispose(vp->au);
+    }
+
+    mem_deref(vp->inbuf);
+    mtx_destroy(&vp->mutex);
+
+    if (g_vpio == vp)
+        g_vpio = NULL;
+}
+
+/**
+ * @brief Get the shared unit, creating it for the first stream
+ */
+static int vpio_get(struct vpio **vpp)
+{
+    AudioComponentDescription desc = {
+        .componentType = kAudioUnitType_Output,
+        .componentSubType = kAudioUnitSubType_VoiceProcessingIO,
+        .componentManufacturer = kAudioUnitManufacturer_Apple,
+    };
+    const UInt32 enable = 1;
+    const UInt32 max_frames = VPIO_MAX_FRAMES;
+    AURenderCallbackStruct cb;
+    AudioComponent comp;
+    struct vpio *vp;
+    OSStatus ret;
+
+    if (g_vpio) {
+        *vpp = mem_ref(g_vpio);
+        return 0;
+    }
+
+    comp = AudioComponentFindNext(NULL, &desc);
+    if (!comp) {
+        warning("tp_audio: vpio: Voice Processing I/O not found\n");
+        return ENOENT;
+    }
+
+    vp = mem_zalloc(sizeof(*vp), vpio_destructor);
+    if (!vp)
+        return ENOMEM;
+
+    vp->in_dev = kAudioObjectUnknown;
+    vp->out_dev = kAudioObjectUnknown;
+
+    /* Room for the largest slice: 4096 stereo float frames */
+    vp->inbuf = mem_alloc(VPIO_MAX_FRAMES * 2 * sizeof(float), NULL);
+    if (!vp->inbuf || mtx_init(&vp->mutex, mtx_plain) != thrd_success) {
+        mem_deref(vp);
+        return ENOMEM;
+    }
+
+    ret = AudioComponentInstanceNew(comp, &vp->au);
+    if (ret)
+        goto out;
+
+    ret = AudioUnitSetProperty(vp->au, kAudioOutputUnitProperty_EnableIO,
+                               kAudioUnitScope_Input, 1, &enable, sizeof(enable));
+    if (ret)
+        goto out;
+
+    ret = AudioUnitSetProperty(vp->au, kAudioOutputUnitProperty_EnableIO,
+                               kAudioUnitScope_Output, 0, &enable, sizeof(enable));
+    if (ret)
+        goto out;
+
+    AudioUnitSetProperty(vp->au, kAudioUnitProperty_MaximumFramesPerSlice,
+                         kAudioUnitScope_Global, 0, &max_frames, sizeof(max_frames));
+
+    /* Keep other apps (music, video) at their volume during calls */
+    AUVoiceIOOtherAudioDuckingConfiguration ducking = {
+        .mEnableAdvancedDucking = false,
+        .mDuckingLevel = kAUVoiceIOOtherAudioDuckingLevelMin,
+    };
+    AudioUnitSetProperty(vp->au, kAUVoiceIOProperty_OtherAudioDuckingConfiguration,
+                         kAudioUnitScope_Global, 0, &ducking, sizeof(ducking));
+
+    cb.inputProc = vpio_input_cb;
+    cb.inputProcRefCon = vp;
+    ret = AudioUnitSetProperty(vp->au, kAudioOutputUnitProperty_SetInputCallback,
+                               kAudioUnitScope_Global, 1, &cb, sizeof(cb));
+    if (ret)
+        goto out;
+
+    cb.inputProc = vpio_output_cb;
+    cb.inputProcRefCon = vp;
+    ret = AudioUnitSetProperty(vp->au, kAudioUnitProperty_SetRenderCallback,
+                               kAudioUnitScope_Input, 0, &cb, sizeof(cb));
+
+ out:
+    if (ret) {
+        warning("tp_audio: vpio: setup failed (%d)\n", (int)ret);
+        mem_deref(vp);
+        return ENODEV;
+    }
+
+    info("tp_audio: vpio: voice processing started\n");
+    g_vpio = vp;
+    *vpp = vp;
+    return 0;
+}
+
+static void vpio_play_destructor(void *arg)
+{
+    struct auplay_st *st = arg;
+    struct vpio *vp = st->vp;
+
+    if (!vp)
+        return;
+
+    mtx_lock(&vp->mutex);
+    if (vp->play == st)
+        vp->play = NULL;
+    mtx_unlock(&vp->mutex);
+
+    vpio_restart(vp);
+    mem_deref(vp);
+}
+
+static void vpio_src_destructor(void *arg)
+{
+    struct ausrc_st *st = arg;
+    struct vpio *vp = st->vp;
+
+    if (!vp)
+        return;
+
+    mtx_lock(&vp->mutex);
+    if (vp->src == st)
+        vp->src = NULL;
+    mtx_unlock(&vp->mutex);
+
+    vpio_restart(vp);
+    mem_deref(vp);
+}
+
+static int vpio_play_alloc(struct auplay_st **stp, const struct auplay *ap,
+                           struct auplay_prm *prm, const char *device,
+                           auplay_write_h *wh, void *arg)
+{
+    struct auplay_st *st;
+    int err;
+
+    (void)ap;
+
+    if (!stp || !prm)
+        return EINVAL;
+
+    if (prm->fmt != AUFMT_S16LE && prm->fmt != AUFMT_FLOAT)
+        return ENOTSUP;
+
+    st = mem_zalloc(sizeof(*st), vpio_play_destructor);
+    if (!st)
+        return ENOMEM;
+
+    st->prm = *prm;
+    st->sampsz = aufmt_sample_size(prm->fmt);
+    st->wh = wh;
+    st->arg = arg;
+
+    err = vpio_get(&st->vp);
+    if (err) {
+        mem_deref(st);
+        return err;
+    }
+
+    mtx_lock(&st->vp->mutex);
+    st->vp->play = st;
+    st->vp->out_dev = find_device_id(device, false);
+    mtx_unlock(&st->vp->mutex);
+
+    err = vpio_restart(st->vp);
+    if (err) {
+        mem_deref(st);
+        return err;
+    }
+
+    *stp = st;
+    return 0;
+}
+
+static int vpio_src_alloc(struct ausrc_st **stp, const struct ausrc *as,
+                          struct ausrc_prm *prm, const char *device,
+                          ausrc_read_h *rh, ausrc_error_h *errh, void *arg)
+{
+    struct ausrc_st *st;
+    int err;
+
+    (void)as;
+    (void)errh;
+
+    if (!stp || !prm)
+        return EINVAL;
+
+    if (prm->fmt != AUFMT_S16LE && prm->fmt != AUFMT_FLOAT)
+        return ENOTSUP;
+
+    if (prm->ch > 2)
+        return ENOTSUP;
+
+    st = mem_zalloc(sizeof(*st), vpio_src_destructor);
+    if (!st)
+        return ENOMEM;
+
+    st->prm = *prm;
+    st->sampsz = aufmt_sample_size(prm->fmt);
+    st->rh = rh;
+    st->arg = arg;
+
+    err = vpio_get(&st->vp);
+    if (err) {
+        mem_deref(st);
+        return err;
+    }
+
+    mtx_lock(&st->vp->mutex);
+    st->vp->src = st;
+    st->vp->in_dev = find_device_id(device, true);
+    mtx_unlock(&st->vp->mutex);
+
+    err = vpio_restart(st->vp);
+    if (err) {
+        mem_deref(st);
+        return err;
+    }
+
+    *stp = st;
+    return 0;
+}
+
 #endif /* __APPLE__ */
 
 /* =============================================================================
@@ -339,7 +857,8 @@ tp_error_t tp_audio_get_current_output(char *buf, size_t size)
 /**
  * @brief Apply audio device to all active calls
  *
- * Uses baresip's audio_set_source/audio_set_player with "audiounit" module.
+ * Uses baresip's audio_set_source/audio_set_player with the configured
+ * driver ("vpio" or "audiounit").
  *
  * @param is_input true for input (microphone), false for output (speaker)
  * @param device_name Device name, or NULL/empty for system default
@@ -356,11 +875,9 @@ static tp_error_t apply_audio_device_to_calls(bool is_input, const char *device_
         return TP_OK;  /* No UAs, nothing to do */
     }
 
-    /* For audiounit module:
-     * - mod parameter: "audiounit" (module name)
-     * - device parameter: device name or NULL for system default
-     */
-    const char *mod = "audiounit";
+    /* The device is a device name, or NULL for the system default */
+    struct config *cfg = conf_config();
+    const char *mod = is_input ? cfg->audio.src_mod : cfg->audio.play_mod;
     const char *dev = (device_name && device_name[0] != '\0') ? device_name : NULL;
 
     /* Iterate through all UAs and get their current call */
@@ -504,6 +1021,13 @@ tp_error_t tp_audio_init(void)
         warning("tp_audio: failed to register device listener: %d\n", (int)status);
         /* Not fatal - continue without hot-plug detection */
     }
+
+    /* The voice processing driver; the config picks it or audiounit */
+    int err = auplay_register(&g_vpio_play, baresip_auplayl(), "vpio", vpio_play_alloc);
+    err |= ausrc_register(&g_vpio_src, baresip_ausrcl(), "vpio", vpio_src_alloc);
+    if (err) {
+        warning("tp_audio: failed to register vpio driver: %m\n", err);
+    }
 #endif
 
     g_audio.initialized = true;
@@ -534,6 +1058,9 @@ void tp_audio_close(void)
         Block_release(g_audio.device_listener);
         g_audio.device_listener = NULL;
     }
+
+    g_vpio_src = mem_deref(g_vpio_src);
+    g_vpio_play = mem_deref(g_vpio_play);
 #endif
 
     g_audio.current_input[0] = '\0';
@@ -541,4 +1068,26 @@ void tp_audio_close(void)
     g_audio.initialized = false;
 
     info("tp_audio: closed\n");
+}
+
+tp_error_t tp_audio_set_echo_cancellation(bool enabled)
+{
+    const char *mod = enabled ? "vpio" : "audiounit";
+    struct config *cfg;
+
+    re_thread_enter();
+    cfg = conf_config();
+    if (cfg) {
+        str_ncpy(cfg->audio.src_mod, mod, sizeof(cfg->audio.src_mod));
+        str_ncpy(cfg->audio.play_mod, mod, sizeof(cfg->audio.play_mod));
+    }
+    re_thread_leave();
+
+    if (!cfg) {
+        return TP_ERR_NOT_INITIALIZED;
+    }
+
+    info("tp_audio: echo cancellation %s (from the next call)\n",
+         enabled ? "on" : "off");
+    return TP_OK;
 }
