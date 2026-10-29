@@ -64,6 +64,8 @@ No versions. No timelines. No promises. Just a checklist.
 - [x] Settings screen
 - [x] Log viewer
 - [x] Diagnostics export
+- [x] Voicemail (number per account, new-message indicator)
+- [x] Call encryption indicator
 
 ### iOS
 
@@ -167,6 +169,7 @@ Priority codecs for TonePhone:
 |--------|--------|-------|
 | srtp | [x] | Required. Media encryption (SDES). |
 | dtls_srtp | [x] | Required. Media encryption (DTLS). |
+| TLS trust | [x] | System certificates plus an imported CA file. |
 | gzrtp | [ ] | Optional. ZRTP support. Adds complexity. |
 
 ---
@@ -184,10 +187,10 @@ Video is explicitly out of scope for TonePhone.
 
 ## Presence / Messaging
 
-Out of scope for TonePhone.
+Chat and presence are out of scope. Voicemail notifications are in.
 
+- [x] mwi — Message waiting (voicemail indicator)
 - [—] presence — Presence
-- [—] mwi — Message waiting
 - [—] contact — Contact list sync
 
 ---

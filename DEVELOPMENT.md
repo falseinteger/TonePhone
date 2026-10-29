@@ -55,7 +55,7 @@ git clone --recursive https://github.com/falseinteger/TonePhone.git
 cd TonePhone
 ```
 
-The `--recursive` flag clones the git submodules (baresip, libre, librem).
+The `--recursive` flag clones the git submodules (baresip and libre; librem is part of libre).
 
 If you forgot `--recursive`:
 
@@ -87,15 +87,23 @@ Building for macos-x86_64...
 
 **Time:** ~5-10 minutes on Apple Silicon
 
-### 3. Build Core Libraries
+### 3. Build Opus
 
-Build baresip and its dependencies (libre, librem):
+```bash
+./scripts/build-opus.sh
+```
+
+This downloads Opus 1.5.2 and builds it for all platforms. baresip's `opus` module links against it.
+
+### 4. Build Core Libraries
+
+Build libre and baresip:
 
 ```bash
 ./scripts/build-core.sh
 ```
 
-This builds static libraries for all platforms using CMake and Ninja.
+This builds static libraries for all platforms using CMake and Ninja. baresip is built from a copy of the submodule with the fixes in [core/patches](core/patches/README.md) applied; use `--clean` after changing a submodule or a patch.
 
 **Expected output:**
 
@@ -109,7 +117,7 @@ This builds static libraries for all platforms using CMake and Ninja.
 
 **Time:** ~3-5 minutes on Apple Silicon
 
-### 4. Package XCFrameworks
+### 5. Package XCFrameworks
 
 Combine the built libraries into XCFrameworks for Xcode:
 
@@ -128,7 +136,7 @@ output/xcframeworks/
 └── libbaresip.xcframework
 ```
 
-### 5. Open Xcode Project
+### 6. Open Xcode Project
 
 ```bash
 open apps/macOS/TonePhone.xcodeproj
@@ -136,7 +144,7 @@ open apps/macOS/TonePhone.xcodeproj
 
 Or open manually from Finder.
 
-### 6. Build and Run
+### 7. Build and Run
 
 1. Select the **TonePhone** scheme in the toolbar
 2. Select **My Mac** as the destination
@@ -218,9 +226,18 @@ tp_core: shutdown complete
 
 ### Test Basic Functionality
 
-1. App window appears
-2. Can add an account (Settings > Accounts)
-3. Account registers successfully (green status)
+Without a SIP provider, use the local test server:
+
+```bash
+./scripts/dev-sip-server.py --user alice --password secret
+```
+
+1. Add an account with the address the server prints, port 5070, UDP, user `alice`, password `secret` (TonePhone › Settings › Accounts, or File › New Account)
+2. The account connects and shows its recent calls
+3. Type `call` in the server's terminal: the incoming call screen appears
+4. Type `voicemail 2` (with “Show new voicemail” on for the account): the voicemail button shows 2 new messages
+
+To keep test accounts away from your own, launch the built binary with `HOME` and `CFFIXED_USER_HOME` pointing at a scratch directory (see [CLAUDE.md](CLAUDE.md)).
 
 ---
 
@@ -232,12 +249,12 @@ OpenSSL wasn't built or is missing for the target platform.
 
 **Fix:** Re-run `./scripts/build-openssl.sh`
 
-### "No such module 'TonePhoneCore'"
+### "library not found" for `libbaresip.a`, `libre.a` or `libopus.a`
 
-XCFrameworks aren't properly linked.
+The app links the universal libraries in `output/macos-fat/lib/`, which `package-xcframework.sh` creates.
 
 **Fix:**
-1. Ensure `./scripts/package-xcframework.sh` completed successfully
+1. Ensure `./scripts/build-opus.sh`, `./scripts/build-core.sh` and `./scripts/package-xcframework.sh` completed successfully
 2. In Xcode, clean build folder (⌘⇧K)
 3. Rebuild (⌘B)
 
@@ -277,6 +294,7 @@ Mixing arm64 and x86_64 binaries.
 ```bash
 rm -rf build/ output/
 ./scripts/build-openssl.sh
+./scripts/build-opus.sh
 ./scripts/build-core.sh
 ./scripts/package-xcframework.sh
 ```
@@ -294,6 +312,7 @@ To start completely fresh:
 ```bash
 rm -rf build/ output/
 ./scripts/build-openssl.sh
+./scripts/build-opus.sh
 ./scripts/build-core.sh
 ./scripts/package-xcframework.sh
 ```

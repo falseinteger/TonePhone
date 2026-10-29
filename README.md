@@ -18,9 +18,10 @@ macOS is the primary platform. The C bridge and core libraries also build for iO
 
 ## Features
 
-- **Calls:** make, answer, decline, hold, mute, keypad tones (RFC 2833, SIP INFO or automatic), call waiting, multiple calls
+- **Calls:** make, answer, decline, hold, mute, keypad tones (RFC 2833, SIP INFO or automatic), call waiting, multiple calls, a lock shows when the audio is encrypted
+- **Voicemail:** voicemail number per account, new-message count in the toolbar and on the Dock icon
 - **Incoming calls:** full-window caller screen with Return to answer and Esc to decline; when TonePhone is in the background, a notification with Answer and Decline and a bouncing Dock icon (it never steals focus)
-- **Accounts:** UDP, TCP or TLS with certificate verification, custom port, authentication username, outbound proxy, registration interval, SRTP / DTLS-SRTP call encryption, STUN/ICE, per-account overrides; clear connection errors ("The username or password is incorrect.")
+- **Accounts:** UDP, TCP or TLS with certificate verification (system certificates plus your provider's own CA), custom port, authentication username, outbound proxy, registration interval, SRTP / DTLS-SRTP call encryption, STUN/ICE, per-account overrides; clear connection errors ("The username or password is incorrect.")
 - **Phone numbers:** choose how numbers are shown (international, national, E.164, as received) and how they are dialed (E.164, without plus, international prefix, national, as typed), per region and per account
 - **Recents:** per-account call history with missed calls, call back with a double-click
 - **Audio:** pick speaker and microphone, live input level meter, ringtone choice
@@ -100,7 +101,7 @@ See [BUILDING.md](BUILDING.md) for complete instructions.
 ./scripts/dev-sip-server.py --user alice --password secret
 ```
 
-Add an account with the address it prints, port 5070, UDP, user `alice`, password `secret`. Type `call` in the server's terminal to ring TonePhone, `cancel` for a missed call, `bye` to hang up. Calls you place from TonePhone are answered automatically.
+Add an account with the address it prints, port 5070, UDP, user `alice`, password `secret`. Type `call` in the server's terminal to ring TonePhone, `cancel` for a missed call, `bye` to hang up, `voicemail 3` to report new voicemail. Calls you place from TonePhone are answered automatically.
 
 ## Contributing
 

@@ -105,7 +105,12 @@ tonephone/
 │   └── swift/TonePhoneCore.swift  # Swift wrapper and event publisher
 │
 ├── apps/
-│   └── macOS/                 # macOS app (SwiftUI); an iOS app is planned
+│   └── macOS/TonePhone/       # macOS app (SwiftUI); an iOS app is planned
+│       ├── App/               # entry point, menus, view model, logging
+│       ├── Accounts/          # account storage, list and editor
+│       ├── Calls/             # call screens, recents, keypad, number formatting
+│       ├── Logs/              # log viewer and export
+│       └── Settings/          # settings window and store
 │
 ├── scripts/
 │   ├── build-openssl.sh, build-opus.sh, build-core.sh
@@ -165,6 +170,7 @@ tp_error_t tp_log_init(const char *log_dir);
 tp_error_t tp_log_set_level(tp_log_level_t level);
 tp_error_t tp_log_get_path(char *buf, size_t size);
 tp_error_t tp_log_flush(void);
+void tp_log_message(tp_log_level_t level, const char *message);  /* app messages */
 tp_error_t tp_log_set_sip_trace(bool enabled);   /* credentials redacted */
 ```
 
@@ -194,6 +200,7 @@ enum TonePhoneEvent {
     case callStateChanged(CallID, CallState, CallEventDetails)  // remote name, owning account
     case mediaChanged(CallID, audioEstablished: Bool, videoEstablished: Bool, encrypted: Bool)
     case audioDeviceChanged
+    case messageWaiting(AccountID, VoicemailStatus)   // RFC 3842 message-summary
 }
 ```
 

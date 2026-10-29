@@ -94,6 +94,8 @@ TonePhone builds baresip with a minimal, **audio-only** module set. Video suppor
 | NAT Traversal | `ice` | ICE connectivity checks |
 | Security | `srtp` | Secure RTP media encryption |
 | Security | `dtls_srtp` | DTLS key exchange for SRTP |
+| Network | `netroam` | Re-registers when the network changes |
+| Voicemail | `mwi` | Message waiting indication (new voicemail) |
 | Account | `account` | SIP account management |
 
 **Note:** The `opus` module is only enabled if libopus is built. See [Opus Setup](#opus-setup-optional) below.
@@ -112,7 +114,7 @@ TonePhone explicitly excludes the following module categories:
 | Android audio | `aaudio`, `opensles` | Not targeting Android |
 | Windows audio | `wasapi` | Not targeting Windows |
 | UI/Console | `stdio`, `cons`, `menu`, `gtk`, `wincons` | App provides UI |
-| Messaging | `presence`, `mwi`, `contact` | Not in v1 scope |
+| Messaging | `presence`, `contact` | Not in v1 scope |
 | Debug | `debug_cmd` | Not needed in release |
 
 ### Binary Size
