@@ -202,6 +202,7 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
 
     /* Unregister call when it ends */
     if (state == TP_CALL_STATE_ENDED) {
+        tp_call_log_summary(call);
         tp_call_unregister(call_id);
     }
 

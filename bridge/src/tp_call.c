@@ -391,6 +391,102 @@ tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits)
 }
 
 /* =============================================================================
+ * Statistics
+ * ============================================================================= */
+
+/**
+ * @brief Read the audio stream statistics of a baresip call
+ * @return false when the call has no audio stream
+ */
+static bool read_stats(const struct call *call, tp_call_stats_t *out)
+{
+    struct audio *au = call_audio(call);
+    struct stream *strm = au ? audio_strm(au) : NULL;
+    const struct aucodec *ac;
+    const struct rtcp_stats *rtcp;
+
+    if (!strm)
+        return false;
+
+    memset(out, 0, sizeof(*out));
+
+    ac = audio_codec(au, true);
+    if (ac)
+        re_snprintf(out->codec, sizeof(out->codec), "%s/%u/%u",
+                    ac->name, ac->srate, ac->ch);
+
+    out->tx_packets = stream_metric_get_tx_n_packets(strm);
+    out->rx_packets = stream_metric_get_rx_n_packets(strm);
+    out->tx_bitrate = stream_metric_get_tx_bitrate(strm);
+    out->rx_bitrate = stream_metric_get_rx_bitrate(strm);
+
+    rtcp = stream_rtcp_stats(strm);
+    if (rtcp && (rtcp->rx.sent || rtcp->tx.sent)) {
+        out->has_rtcp = true;
+        out->tx_lost = rtcp->tx.lost;
+        out->rx_lost = rtcp->rx.lost;
+        out->tx_jitter_us = rtcp->tx.jit;
+        out->rx_jitter_us = rtcp->rx.jit;
+        out->rtt_us = rtcp->rtt;
+    }
+
+    return true;
+}
+
+static tp_error_t call_get_stats_locked(tp_call_id_t id, tp_call_stats_t *out)
+{
+    call_entry_t *entry;
+    struct call *call;
+
+    if (id == TP_INVALID_ID || !out) {
+        return TP_ERR_INVALID_ARG;
+    }
+
+    pthread_mutex_lock(&g_mutex);
+    entry = find_call(id);
+    call = entry ? entry->call : NULL;
+    pthread_mutex_unlock(&g_mutex);
+
+    if (!call || !read_stats(call, out)) {
+        return TP_ERR_NOT_FOUND;
+    }
+
+    return TP_OK;
+}
+
+tp_error_t tp_call_get_stats(tp_call_id_t id, tp_call_stats_t *out)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_get_stats_locked(id, out);
+    re_thread_leave();
+
+    return result;
+}
+
+void tp_call_log_summary(const struct call *call)
+{
+    tp_call_stats_t s;
+
+    if (!call || !read_stats(call, &s) || (!s.tx_packets && !s.rx_packets))
+        return;
+
+    if (s.has_rtcp) {
+        info("tp_call: audio %s: sent %u packets (%d lost), received %u"
+             " (%d lost), jitter %u/%u ms, round trip %u ms\n",
+             s.codec[0] ? s.codec : "-", s.tx_packets, s.tx_lost,
+             s.rx_packets, s.rx_lost, s.tx_jitter_us / 1000,
+             s.rx_jitter_us / 1000, s.rtt_us / 1000);
+    }
+    else {
+        info("tp_call: audio %s: sent %u packets, received %u"
+             " (no RTCP reports)\n",
+             s.codec[0] ? s.codec : "-", s.tx_packets, s.rx_packets);
+    }
+}
+
+/* =============================================================================
  * ID Lookup (for event system)
  * ============================================================================= */
 

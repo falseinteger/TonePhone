@@ -34,7 +34,7 @@ No versions. No timelines. No promises. Just a checklist.
 - [x] Call control API
 - [x] Call state callbacks
 - [x] Audio device enumeration
-- [~] Diagnostics API (log file, SIP message trace; RTP statistics not yet)
+- [x] Diagnostics API (log file, SIP message trace, call statistics)
 - [x] Event dispatch to main thread
 
 ### Platform Adapters
@@ -203,7 +203,7 @@ TonePhone has its own native UI. Baresip control modules are for debugging only.
 |--------|--------|-------|
 | debug_cmd | [ ] | Useful for development |
 | ctrl_tcp | [ ] | JSON control, useful for testing |
-| rtcpsummary | [ ] | RTCP stats, exposed via diagnostics |
+| rtcpsummary | [ ] | Not needed: the bridge logs its own end-of-call summary |
 
 ### Not Needed
 
