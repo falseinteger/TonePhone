@@ -14,12 +14,21 @@ struct TonePhoneApp: App {
     var body: some Scene {
         Window("TonePhone", id: MainWindow.id) {
             ContentView()
-                .frame(minWidth: 340, idealWidth: 380, maxWidth: 520, minHeight: 460, idealHeight: 600)
+                .frame(minWidth: 640, minHeight: 420)
         }
-        .defaultSize(width: 380, height: 600)
+        .defaultSize(width: 860, height: 560)
         .commands {
             TonePhoneCommands()
         }
+
+        // Opens by itself when a call starts and closes when the last one ends
+        Window("Call", id: CallWindow.id) {
+            ActiveCallView(viewModel: AppViewModel.shared)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.topTrailing)
+        .commandsRemoved()
 
         Window("Logs", id: LogViewerView.windowID) {
             LogViewerView()
@@ -52,9 +61,14 @@ struct TonePhoneCommands: Commands {
     private var isConnected: Bool {
         viewModel.callState == .established || viewModel.callState == .held
     }
-    private var isRinging: Bool {
-        if case .incoming = viewModel.callState { return true }
-        return false
+    private var isRinging: Bool { ringingCallID != nil }
+
+    /// The ringing call: the one shown, or a call waiting during another call.
+    private var ringingCallID: CallID? {
+        if case .incoming = viewModel.callState { return viewModel.activeCallID }
+        return viewModel.activeCalls.values
+            .filter(\.isIncomingRinging)
+            .min { $0.id.rawValue < $1.id.rawValue }?.id
     }
 
     var body: some Commands {
@@ -95,14 +109,14 @@ struct TonePhoneCommands: Commands {
 
             Divider()
 
-            Button("Answer") {
-                viewModel.answerCall()
+            Button("Accept") {
+                if let id = ringingCallID { viewModel.answerCall(id) }
             }
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!isRinging)
 
             Button("Decline") {
-                viewModel.hangupCall()
+                if let id = ringingCallID { viewModel.declineCall(id) }
             }
             .disabled(!isRinging)
 
@@ -142,7 +156,7 @@ struct TonePhoneCommands: Commands {
                 viewModel.hangupCall()
             }
             .keyboardShortcut("d")
-            .disabled(!hasCall || isRinging)
+            .disabled(!hasCall || viewModel.activeCalls[viewModel.activeCallID ?? CallID(rawValue: 0)]?.isIncomingRinging == true)
         }
 
         CommandGroup(before: .windowList) {
@@ -195,6 +209,11 @@ enum MainWindow {
 
     static func store(_ action: OpenWindowAction) {
         openWindow = action
+    }
+
+    /// Opens any of the app's windows by scene ID.
+    static func open(id: String) {
+        openWindow?(id: id)
     }
 
     /// Whether the main window is on screen (not closed or minimized).

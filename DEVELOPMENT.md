@@ -234,7 +234,7 @@ Without a SIP provider, use the local test server:
 
 1. Add an account with the address the server prints, port 5070, UDP, user `alice`, password `secret` (TonePhone › Settings › Accounts, or File › New Account)
 2. The account connects and shows its recent calls
-3. Type `call` in the server's terminal: the incoming call screen appears
+3. Type `call` in the server's terminal: the call window opens with Decline and Accept
 4. Type `voicemail 2` (with “Show new voicemail” on for the account): the voicemail button shows 2 new messages
 
 To keep test accounts away from your own, launch the built binary with `HOME` and `CFFIXED_USER_HOME` pointing at a scratch directory (see [CLAUDE.md](CLAUDE.md)).

@@ -3,9 +3,12 @@
 A minimal, native SIP softphone for macOS.
 
 <p align="center">
-  <img src="docs/screenshots/incoming-call.png" width="300" alt="Incoming call screen with Answer and Decline buttons">
-  <img src="docs/screenshots/recents.png" width="300" alt="Recent calls for a connected account">
-  <img src="docs/screenshots/in-call.png" width="300" alt="Call in progress with mute, hold, keypad and audio device controls">
+  <img src="docs/screenshots/recents.png" width="720" alt="Main window: recent calls on the left, the selected call with its history on the right">
+</p>
+<p align="center">
+  <img src="docs/screenshots/incoming-call.png" width="260" alt="Incoming call window with Decline and Accept">
+  <img src="docs/screenshots/in-call.png" width="260" alt="Call in progress with mute, keypad, audio and hold controls, marked as encrypted">
+  <img src="docs/screenshots/call-waiting.png" width="260" alt="A second call ringing during a call, with Decline and Accept at the top">
 </p>
 
 ---
@@ -18,25 +21,25 @@ macOS is the primary platform. The C bridge and core libraries also build for iO
 
 ## Features
 
-- **Calls:** make, answer, decline, hold, mute, keypad tones (RFC 2833, SIP INFO or automatic), call waiting, multiple calls, a lock shows when the audio is encrypted
+- **Calls:** a separate call window like the Phone app; make, accept, decline, hold, mute, keypad tones (RFC 2833, SIP INFO or automatic); call waiting with Hold & Accept, End & Accept and Swap; a lock shows when the audio is encrypted
 - **Voicemail:** voicemail number per account, new-message count in the toolbar and on the Dock icon
-- **Incoming calls:** full-window caller screen with Return to answer and Esc to decline; when TonePhone is in the background, a notification with Answer and Decline and a bouncing Dock icon (it never steals focus)
+- **Incoming calls:** call window with Return to accept and Esc to decline; when TonePhone is in the background, a notification with Accept and Decline and a bouncing Dock icon (it never steals focus)
 - **Accounts:** UDP, TCP or TLS with certificate verification (system certificates plus your provider's own CA), custom port, authentication username, outbound proxy, registration interval, SRTP / DTLS-SRTP call encryption, STUN/ICE, per-account overrides; clear connection errors ("The username or password is incorrect.")
-- **Phone numbers:** choose how numbers are shown (international, national, E.164, as received) and how they are dialed (E.164, without plus, international prefix, national, as typed), per region and per account
-- **Recents:** per-account call history with missed calls, call back with a double-click
+- **Phone numbers:** choose how numbers are shown (international, national, compact, as received) and how they are dialed (international with or without plus, international prefix, national, as typed), per region and per account
+- **Recents:** per-account call history grouped like the Phone app, All Calls / Missed filter, search that also dials what you type, keypad popover (⌘K), switch accounts from the window title
 - **Audio:** pick speaker and microphone, live input level meter, ringtone choice
 - **Diagnostics:** log viewer with search and filters, optional SIP message tracing (credentials redacted), log export
 - **Reliability:** reconnects after sleep and network changes, unregisters cleanly on quit, keeps running in the background so calls still ring
 
 ## Screenshots
 
-| Call waiting | Connection error | Account settings |
+| Accounts | Account settings | Phone number settings |
 |---|---|---|
-| ![A second call ringing during a call](docs/screenshots/call-waiting.png) | ![An account that could not connect, with the reason and Try Again](docs/screenshots/accounts.png) | ![Account settings with transport, port, outbound proxy and call encryption](docs/screenshots/account-settings.png) |
+| ![Accounts settings listing each account with its status and a Details button](docs/screenshots/settings-accounts.png) | ![Account settings with transport, port, outbound proxy and call encryption](docs/screenshots/account-settings.png) | ![General settings with phone number display and dialing formats](docs/screenshots/settings-general.png) |
 
-| Phone number settings | Advanced settings |
+| Advanced settings | Diagnostics |
 |---|---|
-| ![General settings with phone number display and dialing formats](docs/screenshots/settings-general.png) | ![Advanced settings with network, SIP and diagnostics options](docs/screenshots/settings-advanced.png) |
+| ![Advanced settings with STUN servers, network, connection and certificate options](docs/screenshots/settings-advanced.png) | ![Diagnostics settings with log level and SIP message logging](docs/screenshots/settings-diagnostics.png) |
 
 ![Log viewer showing SIP messages](docs/screenshots/logs.png)
 

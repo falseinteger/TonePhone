@@ -254,12 +254,15 @@ struct LogViewerView: View {
                 }
                 .width(min: 64, ideal: 70, max: 90)
 
+                // Only warnings and errors are marked, like Console
                 TableColumn("Level") { entry in
-                    Label(entry.level.title, systemImage: entry.level.symbolName)
-                        .foregroundStyle(entry.level.color)
-                        .frame(maxHeight: .infinity, alignment: .top)
+                    if entry.level <= .warning {
+                        Label(entry.level.title, systemImage: entry.level.symbolName)
+                            .foregroundStyle(entry.level.color)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                    }
                 }
-                .width(min: 70, ideal: 84, max: 100)
+                .width(min: 60, ideal: 70, max: 90)
 
                 TableColumn("Message") { entry in
                     Text(entry.message)
@@ -274,30 +277,46 @@ struct LogViewerView: View {
             }
             .overlay {
                 if visibleEntries.isEmpty {
-                    Text(store.logPath == nil ? "Logging Is Unavailable" : "No Log Entries")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                    if scope == .sip && !settings.sipTrace {
+                        VStack(spacing: 8) {
+                            Text("SIP Messages Aren’t Recorded")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                            Button("Record SIP Messages") {
+                                settings.sipTrace = true
+                            }
+                        }
+                    } else {
+                        Text(store.logPath == nil ? "Logging Is Unavailable" : "No Log Entries")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
         .searchable(text: $query, placement: .toolbar, prompt: "Search")
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Picker("Show", selection: $scope) {
-                    ForEach(Scope.allCases, id: \.self) { scope in
-                        Text(scope.rawValue).tag(scope)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .help("Filter log entries")
-            }
-
             ToolbarItemGroup {
-                Toggle(isOn: $settings.sipTrace) {
-                    Label("Log SIP Messages", systemImage: "arrow.left.arrow.right")
+                Menu {
+                    Picker("Show", selection: $scope) {
+                        ForEach(Scope.allCases, id: \.self) { scope in
+                            Text(scope.rawValue).tag(scope)
+                        }
+                    }
+                    .pickerStyle(.inline)
+
+                    Divider()
+
+                    Toggle("Record SIP Messages", isOn: $settings.sipTrace)
+                } label: {
+                    Label(
+                        "Filter",
+                        systemImage: scope == .all
+                            ? "line.3.horizontal.decrease.circle"
+                            : "line.3.horizontal.decrease.circle.fill"
+                    )
                 }
-                .help("Record every SIP message sent and received")
+                .help("Show all entries, SIP messages or problems")
 
                 Toggle(isOn: Binding(
                     get: { isPaused },
@@ -332,11 +351,7 @@ struct LogViewerView: View {
         }
         .navigationTitle("Logs")
         .frame(minWidth: 640, minHeight: 360)
-        .onAppear {
-            store.start()
-            // Opening the log viewer turns on diagnostics
-            if !settings.advancedMode { settings.advancedMode = true }
-        }
+        .onAppear { store.start() }
         .onDisappear { store.stop() }
     }
 }

@@ -56,7 +56,7 @@ No versions. No timelines. No promises. Just a checklist.
 - [x] Registration status indicator
 - [x] Dialpad / URI input
 - [x] Incoming call alert
-- [x] Active call screen
+- [x] Call window (incoming, active, call waiting)
 - [x] Call controls (answer, hangup, hold, mute)
 - [x] DTMF input
 - [x] Audio device picker

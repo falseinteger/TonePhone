@@ -35,14 +35,11 @@ struct AudioSettingsView: View {
                 }
             }
 
-            Section("Microphone Access") {
-                LabeledContent("Microphone") {
+            Section {
+                RingtonePickerView(selectedRingtone: $settings.selectedRingtone)
+                LabeledContent("Microphone access") {
                     microphoneStatusView
                 }
-            }
-
-            Section("Ringtone") {
-                RingtonePickerView(selectedRingtone: $settings.selectedRingtone)
             }
         }
         .formStyle(.grouped)
@@ -58,8 +55,8 @@ struct AudioSettingsView: View {
     private var microphoneStatusView: some View {
         switch microphoneStatus {
         case .authorized:
-            Label("Allowed", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            Text("Allowed")
+                .foregroundStyle(.secondary)
         case .notDetermined:
             Button("Allow Access…") {
                 AVCaptureDevice.requestAccess(for: .audio) { _ in

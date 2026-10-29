@@ -83,14 +83,16 @@ def sdp(host, port=40000, offer=""):
 
     When the offer asks for SDES encryption (a=crypto), the answer accepts
     the first suite with a random key, so the app reports the call as
-    encrypted. No RTP is sent either way.
+    encrypted. Offers carry a key too, so calls placed from here are
+    encrypted when the account allows it. No RTP is sent either way.
     """
     proto = "RTP/SAVP" if "RTP/SAVP" in offer else "RTP/AVP"
     crypto = ""
     suite = re.search(r"a=crypto:(\d+) (\S+) ", offer)
-    if suite:
+    if suite or not offer:
+        tag, name = (suite.group(1), suite.group(2)) if suite else ("1", "AES_CM_128_HMAC_SHA1_80")
         key = base64.b64encode(random.randbytes(30)).decode()
-        crypto = f"a=crypto:{suite.group(1)} {suite.group(2)} inline:{key}\r\n"
+        crypto = f"a=crypto:{tag} {name} inline:{key}\r\n"
     # baresip ignores loopback addresses, so advertise the LAN address
     return (
         "v=0\r\n"
@@ -425,7 +427,7 @@ def main():
         command = parts[0]
         if command == "call":
             number = parts[1] if len(parts) > 1 else "+14155550123"
-            name = parts[2] if len(parts) > 2 else "Alice Johnson"
+            name = parts[2].strip("\"") if len(parts) > 2 else "Alice Johnson"
             server.place_call(number, name)
         elif command == "cancel":
             server.cancel()

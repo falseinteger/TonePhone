@@ -107,12 +107,21 @@ Accessibility is mandatory, not optional:
 
 | Component | Description |
 |-----------|-------------|
-| Dialer / Keypad | Phone number input with dial button |
-| Accounts List | List of configured SIP accounts |
-| Account Editor | Add/edit account details |
-| Active Call | In-call controls (mute, hold, hangup, keypad) |
-| Incoming Call | Call notification (window on macOS, screen on iOS) |
-| Settings | App preferences and SIP configuration |
+| Main window | Split view like the Phone app: recents (window background, gray selection, grouped calls) and the selected call's detail; account in the window title, switched from the title menu |
+| Dialer / Keypad | Toolbar popover (Cmd+K) with formatted number field; search also dials |
+| Accounts List | Shown when no account is connected; Settings › Accounts lists accounts with Details… |
+| Account Editor | Add/edit account details (sheet) |
+| Call window | Separate small window (hidden title bar) for incoming and active calls; other calls appear as rows at the top with Decline / Accept (Hold & Accept, End & Accept) or Swap |
+| Settings | Toolbar panes: General, Accounts, Audio, Advanced, Diagnostics; grouped forms that fit a small display |
+
+### Call Controls
+
+- Round buttons with a caption underneath, as in the Phone app. Only the circle
+  is the button, so the keyboard focus ring follows it.
+- Captions don't change with state ("Mute", "Hold"); the on state is shown by
+  the filled button. Menu commands do change ("Mute" / "Unmute").
+- Accept has initial focus on an incoming call, so Space never declines.
+- Use "Accept" / "Decline" for ringing calls and "Swap" for switching calls.
 
 ### Settings Organization
 
@@ -132,12 +141,12 @@ Accessibility is mandatory, not optional:
 | `Cmd+N` | New account |
 | `Cmd+K` | Keypad (dialing, or tones during a call) |
 | `Cmd+,` | Open settings |
-| `Return` / `Esc` | Answer / decline an incoming call (incoming call screen) |
-| `Cmd+Return` | Answer (Call menu) |
+| `Return` / `Esc` | Accept / decline an incoming call (call window) |
+| `Cmd+Return` | Accept a ringing call, including a waiting call (Call menu) |
 | `Cmd+U` | Mute / unmute |
 | `Cmd+R` | Hold / resume |
 | `Cmd+D` | End call |
-| `Cmd+[` | Back from the call screen |
+| `Cmd+0` | Show the main window |
 | `Option+Cmd+L` | Logs window |
 
 Never reuse system shortcuts for call actions: `Cmd+M` (Minimize),

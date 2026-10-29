@@ -2,72 +2,12 @@
 //  DialpadView.swift
 //  TonePhone
 //
-//  Dial field and keypad for entering phone numbers or SIP addresses.
+//  Telephone keypad, used for dialing and for sending tones during a call.
 //
 
 import SwiftUI
 
-/// Text field for a number, username or SIP address, with a Call button.
-///
-/// Phone numbers are formatted while typing (if enabled in Settings);
-/// the raw digits are kept for dialing.
-struct DialField: View {
-    @Binding var input: String
-    let onCall: (String) -> Void
-
-    @FocusState private var isFocused: Bool
-    @State private var formatVersion = 0
-
-    private var trimmedInput: String {
-        input.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Shows formatted input while storing what the user typed.
-    private var formattedBinding: Binding<String> {
-        Binding(
-            get: { _ = formatVersion; return PhoneNumberService.formatPartial(input) },
-            set: { newValue in
-                if PhoneNumberService.looksLikeAddress(newValue) {
-                    input = newValue
-                } else {
-                    // Keep only characters that mean something when dialing
-                    input = PhoneNumberService.dialableCharacters(of: newValue)
-                }
-            }
-        )
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            TextField("Number or address", text: formattedBinding, prompt: Text("Enter a number or address"))
-                .textFieldStyle(.roundedBorder)
-                .font(.title3)
-                .focused($isFocused)
-                .onSubmit(call)
-                .labelsHidden()
-
-            Button(action: call) {
-                Label("Call", systemImage: "phone.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .disabled(trimmedInput.isEmpty)
-            .help("Call (Return)")
-        }
-        .onAppear { isFocused = true }
-        .onReceive(NotificationCenter.default.publisher(for: .phoneNumberFormatDidChange)) { _ in
-            formatVersion += 1
-        }
-    }
-
-    private func call() {
-        guard !trimmedInput.isEmpty else { return }
-        onCall(trimmedInput)
-        input = ""
-    }
-}
-
-/// Telephone keypad. Used for dialing and for sending tones during a call.
+/// Telephone keypad with round keys, laid out like the Phone app.
 struct KeypadView: View {
     let onKey: (String) -> Void
 
@@ -84,23 +24,26 @@ struct KeypadView: View {
     ]
 
     var body: some View {
-        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+        Grid(horizontalSpacing: 14, verticalSpacing: 12) {
             ForEach(Self.rows, id: \.self) { row in
                 GridRow {
                     ForEach(row, id: \.self) { key in
                         Button {
                             onKey(key)
                         } label: {
-                            VStack(spacing: 0) {
+                            VStack(spacing: -2) {
                                 Text(key)
-                                    .font(.title2.weight(.medium))
+                                    .font(.system(size: key == "*" ? 30 : 26, weight: .regular))
                                 Text(Self.letters[key] ?? " ")
-                                    .font(.caption2)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .tracking(1.5)
                                     .foregroundStyle(.secondary)
                             }
-                            .frame(width: 52, height: 40)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(.quaternary))
+                            .contentShape(Circle())
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KeypadButtonStyle())
                         .accessibilityLabel(Self.accessibilityName(for: key))
                     }
                 }
@@ -117,56 +60,84 @@ struct KeypadView: View {
     }
 }
 
-/// Keypad popover for dialing: appends to the dial field; long numbers can be typed directly.
+/// Darkens a key while it is pressed.
+private struct KeypadButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay(Circle().fill(.primary.opacity(configuration.isPressed ? 0.15 : 0)))
+    }
+}
+
+/// Keypad popover for dialing. Digits can also be typed on the keyboard.
 struct DialKeypadPopover: View {
     @Binding var input: String
     let onCall: (String) -> Void
 
+    @FocusState private var isFocused: Bool
+
+    /// Shows the formatted number while storing what was typed.
+    private var formattedBinding: Binding<String> {
+        Binding(
+            get: { PhoneNumberService.formatPartial(input) },
+            set: { newValue in
+                input = PhoneNumberService.looksLikeAddress(newValue)
+                    ? newValue
+                    : PhoneNumberService.dialableCharacters(of: newValue)
+            }
+        )
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
-            Text(input.isEmpty ? " " : PhoneNumberService.formatPartial(input))
-                .font(.title2.monospacedDigit())
-                .lineLimit(1)
-                .truncationMode(.head)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel(input.isEmpty ? "No number entered" : input)
+        VStack(spacing: 16) {
+            HStack(spacing: 6) {
+                TextField("Number", text: formattedBinding, prompt: Text("Enter Number"))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 24))
+                    .multilineTextAlignment(.center)
+                    .focused($isFocused)
+                    .onSubmit(call)
+
+                Button {
+                    if !input.isEmpty { input.removeLast() }
+                } label: {
+                    Label("Delete", systemImage: "delete.backward")
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+                .opacity(input.isEmpty ? 0 : 1)
+                .disabled(input.isEmpty)
+                .help("Delete")
+            }
 
             KeypadView { key in
                 input.append(key)
             }
 
-            HStack {
-                Button {
-                    if !input.isEmpty { input.removeLast() }
-                } label: {
-                    Label("Delete", systemImage: "delete.backward")
-                }
-                .disabled(input.isEmpty)
-
-                Spacer()
-
-                Button {
-                    let number = input
-                    input = ""
-                    onCall(number)
-                } label: {
-                    Label("Call", systemImage: "phone.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
-                .keyboardShortcut(.defaultAction)
-                .disabled(input.isEmpty)
+            Button(action: call) {
+                Label("Call", systemImage: "phone.fill")
+                    .labelStyle(.iconOnly)
+                    .font(.title)
+                    .foregroundStyle(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(.green))
             }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+            .disabled(input.isEmpty)
+            .help("Call")
         }
-        .padding(16)
-        .frame(width: 220)
+        .padding(20)
+        .frame(width: 260)
+        .onAppear { isFocused = true }
     }
-}
 
-#Preview("Dial Field") {
-    DialField(input: .constant("4155550123")) { _ in }
-        .padding()
-        .frame(width: 360)
+    private func call() {
+        let number = input.trimmingCharacters(in: .whitespaces)
+        guard !number.isEmpty else { return }
+        input = ""
+        onCall(number)
+    }
 }
 
 #Preview("Keypad") {

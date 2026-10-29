@@ -2,78 +2,119 @@
 //  ActiveAccountView.swift
 //  TonePhone
 //
-//  Main screen when connected to an account.
+//  Main window when connected to an account: recents and their detail.
 //
 
 import SwiftUI
 
-/// Screen displayed when connected to a SIP account: a dial field,
-/// recent calls, and calls in progress.
+/// Recent calls on the left, the selected call on the right, like the
+/// Phone app. The search field filters recents and dials what is typed.
 struct ActiveAccountView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var query = ""
+    @State private var filter: RecentsFilter = .all
+    @State private var selection: CallRecord.ID?
+    @State private var records: [CallRecord] = []
     @State private var dialInput = ""
     @State private var isKeypadPresented = false
-    @State private var selectedTab: Tab = .recents
+    @State private var formatVersion = 0
 
-    private enum Tab: Hashable {
-        case recents
-        case calls
+    private var visibleRecords: [CallRecord] {
+        records.filter { record in
+            if filter == .missed && record.direction != .missed { return false }
+            guard !query.isEmpty else { return true }
+            let labels = PhoneNumberService.partyLabels(name: record.remoteName, uri: record.remoteURI)
+            let digits = PhoneNumberService.dialableCharacters(of: query)
+            return labels.title.localizedCaseInsensitiveContains(query) ||
+                (labels.subtitle?.localizedCaseInsensitiveContains(query) ?? false) ||
+                (!digits.isEmpty && record.remoteURI.contains(digits))
+        }
     }
 
-    private var hasCalls: Bool { !viewModel.activeCalls.isEmpty }
+    private var selectedRecord: CallRecord? {
+        records.first { $0.id == selection }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if case .failed(let reason) = viewModel.registrationStatus {
-                connectionProblemBanner(reason)
-            }
-
-            DialField(input: $dialInput) { input in
-                viewModel.dial(input)
-            }
-            .padding(12)
-
-            if hasCalls {
-                Picker("View", selection: $selectedTab) {
-                    Text("Recents").tag(Tab.recents)
-                    Text("Calls (\(viewModel.activeCalls.count))").tag(Tab.calls)
+        NavigationSplitView {
+            CallHistoryView(
+                viewModel: viewModel,
+                records: visibleRecords,
+                query: query,
+                selection: $selection,
+                formatVersion: formatVersion
+            )
+            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
+            .toolbar {
+                // In the list's own part of the toolbar, like the Phone app
+                ToolbarItem {
+                    Menu {
+                        Picker("Show", selection: $filter) {
+                            ForEach(RecentsFilter.allCases) { filter in
+                                Text(filter.rawValue).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label(
+                            "Filter",
+                            systemImage: filter == .all
+                                ? "line.3.horizontal.decrease.circle"
+                                : "line.3.horizontal.decrease.circle.fill"
+                        )
+                    }
+                    .help("Show all calls or only missed calls")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
-                .help("Switch between recent calls and calls in progress")
             }
-
-            Divider()
-
-            if hasCalls && selectedTab == .calls {
-                ActiveCallsListView(viewModel: viewModel)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if case .failed(let reason) = viewModel.registrationStatus {
+                    connectionProblemBanner(reason)
+                }
+            }
+        } detail: {
+            if let record = selectedRecord {
+                RecentDetailView(
+                    viewModel: viewModel,
+                    record: record,
+                    allRecords: records,
+                    formatVersion: formatVersion
+                )
             } else {
-                CallHistoryView(viewModel: viewModel) { uri in
-                    viewModel.dial(uri)
-                }
+                Text("No Call Selected")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .modifier(HideSidebarToggle())
         .navigationTitle(viewModel.activeAccount?.title ?? "TonePhone")
         .navigationSubtitle(statusSubtitle)
+        .toolbarTitleMenu {
+            AccountSwitcherMenu(viewModel: viewModel)
+        }
+        .searchable(text: $query, placement: .toolbar, prompt: "Search or Enter Number")
+        .onSubmit(of: .search) {
+            let input = query.trimmingCharacters(in: .whitespaces)
+            guard !input.isEmpty, visibleRecords.isEmpty || PhoneNumberService.looksLikeAddress(input)
+                || !PhoneNumberService.dialableCharacters(of: input).isEmpty else { return }
+            viewModel.dial(input)
+            query = ""
+        }
         .toolbar {
-            if viewModel.canCallVoicemail {
-                ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if viewModel.canCallVoicemail {
                     Button {
                         viewModel.callVoicemail()
                     } label: {
-                        Label(voicemailLabel, systemImage: "recordingtape")
+                        Label(voicemailLabel, systemImage: voicemailSymbol)
                     }
                     .help(voicemailLabel)
                 }
-            }
 
-            ToolbarItem(placement: .primaryAction) {
                 Button {
                     isKeypadPresented.toggle()
                 } label: {
-                    Label("Keypad", systemImage: "circle.grid.3x3")
+                    Label("Keypad", systemImage: "circle.grid.3x3.fill")
                 }
                 .keyboardShortcut("k")
                 .help("Keypad (⌘K)")
@@ -85,14 +126,36 @@ struct ActiveAccountView: View {
                 }
             }
         }
-        .onChange(of: viewModel.activeCalls.count) { count in
-            // Show calls in progress when a call is waiting; return to recents when none are left
-            if count == 0 {
-                selectedTab = .recents
-            } else if viewModel.activeCalls.values.contains(where: { $0.isIncomingRinging }) {
-                selectedTab = .calls
-            }
+        .onAppear(perform: reload)
+        .onChange(of: viewModel.activeAccount?.id) { _ in
+            selection = nil
+            reload()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .callHistoryDidChange)) { _ in
+            reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .phoneNumberFormatDidChange)) { _ in
+            formatVersion += 1
+        }
+    }
+
+    private func reload() {
+        guard let accountID = viewModel.activeAccount?.id else {
+            records = []
+            return
+        }
+        records = CallHistoryStore.shared.records(for: accountID)
+        if selection == nil || !records.contains(where: { $0.id == selection }) {
+            selection = records.first?.id
+        }
+    }
+
+    private var hasNewVoicemail: Bool {
+        viewModel.voicemailStatus?.hasNewMessages ?? false
+    }
+
+    private var voicemailSymbol: String {
+        hasNewVoicemail ? "recordingtape.circle.fill" : "recordingtape"
     }
 
     private var voicemailLabel: String {
@@ -109,6 +172,9 @@ struct ActiveAccountView: View {
         guard let account = viewModel.activeAccount else { return "" }
         switch viewModel.registrationStatus {
         case .registered:
+            if let count = viewModel.voicemailStatus?.newMessages, count > 0 {
+                return "\(account.address) · \(count) new voicemail" + (count == 1 ? "" : "s")
+            }
             return account.address
         case .failed:
             return "Not Connected"
@@ -124,7 +190,7 @@ struct ActiveAccountView: View {
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Not connected")
+                Text("Not Connected")
                     .font(.headline)
                 Text(reason ?? "TonePhone will keep trying to reconnect.")
                     .font(.subheadline)
@@ -140,12 +206,61 @@ struct ActiveAccountView: View {
             .controlSize(.small)
         }
         .padding(12)
-        .background(.orange.opacity(0.12))
+        .background(.bar)
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// The Phone app has no sidebar button; the list is always shown.
+private struct HideSidebarToggle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
+    }
+}
+
+/// Accounts in the window title menu: switch, edit, add, disconnect.
+struct AccountSwitcherMenu: View {
+    @ObservedObject var viewModel: AppViewModel
+
+    var body: some View {
+        ForEach(viewModel.accounts) { account in
+            Button {
+                if account.id != viewModel.activeAccount?.id {
+                    viewModel.startConnection(for: account)
+                }
+            } label: {
+                if account.id == viewModel.activeAccount?.id {
+                    Label(account.title, systemImage: "checkmark")
+                } else {
+                    Text(account.title)
+                }
+            }
+        }
+
+        Divider()
+
+        if let account = viewModel.activeAccount {
+            Button("Edit \(account.title)…") {
+                viewModel.showEditAccountSheet(for: account)
+            }
+        }
+        Button("Add Account…") {
+            viewModel.showAddAccountSheet()
+        }
+
+        Divider()
+
+        Button("Disconnect") {
+            viewModel.disconnect()
+        }
     }
 }
 
 #Preview {
     ActiveAccountView(viewModel: AppViewModel.shared)
-        .frame(width: 380, height: 520)
+        .frame(width: 820, height: 540)
 }

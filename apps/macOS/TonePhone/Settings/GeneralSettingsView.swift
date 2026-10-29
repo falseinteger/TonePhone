@@ -97,8 +97,8 @@ struct GeneralSettingsView: View {
                 LabeledContent("Incoming call alerts") {
                     switch notificationsAllowed {
                     case .some(true):
-                        Label("Allowed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        Text("Allowed")
+                            .foregroundStyle(.secondary)
                     case .some(false):
                         HStack {
                             Label("Off", systemImage: "xmark.circle.fill")

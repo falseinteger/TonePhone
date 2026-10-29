@@ -70,7 +70,7 @@ final class IncomingCallManager: NSObject, ObservableObject {
 
         let answerAction = UNNotificationAction(
             identifier: Identifier.answerAction,
-            title: "Answer",
+            title: "Accept",
             options: [.foreground]
         )
         let declineAction = UNNotificationAction(
@@ -110,8 +110,8 @@ final class IncomingCallManager: NSObject, ObservableObject {
         startRingtone()
 
         if NSApp.isActive {
-            // Frontmost: the main window shows the call; reopen it if it was closed
-            MainWindow.show()
+            // Frontmost: the call window shows the call
+            CallWindow.show()
             return
         }
 
@@ -243,13 +243,13 @@ extension IncomingCallManager: UNUserNotificationCenterDelegate {
                 let callID = CallID(rawValue: rawID)
                 switch action {
                 case Identifier.answerAction:
-                    MainWindow.show()
+                    CallWindow.show()
                     self.onAnswer?(callID)
                 case Identifier.declineAction:
                     self.onDecline?(callID)
                 case UNNotificationDefaultActionIdentifier:
                     NSApp.activate(ignoringOtherApps: true)
-                    MainWindow.show()
+                    CallWindow.show()
                     self.onShowCall?(callID)
                 default:
                     // Dismissing the banner leaves the call ringing

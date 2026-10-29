@@ -108,7 +108,7 @@ tonephone/
 │   └── macOS/TonePhone/       # macOS app (SwiftUI); an iOS app is planned
 │       ├── App/               # entry point, menus, view model, logging
 │       ├── Accounts/          # account storage, list and editor
-│       ├── Calls/             # call screens, recents, keypad, number formatting
+│       ├── Calls/             # call window, recents, keypad, number formatting
 │       ├── Logs/              # log viewer and export
 │       └── Settings/          # settings window and store
 │

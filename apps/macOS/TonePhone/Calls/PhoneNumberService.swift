@@ -21,9 +21,9 @@ enum PhoneNumberDisplayFormat: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .international: return "International"
-        case .national: return "National"
-        case .e164: return "E.164"
+        case .international: return "International (+1 415-555-0123)"
+        case .national: return "National ((415) 555-0123)"
+        case .e164: return "Compact (+14155550123)"
         case .asReceived: return "As Received"
         }
     }
@@ -44,10 +44,10 @@ enum PhoneNumberDialFormat: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .e164: return "E.164 (+14155550123)"
-        case .e164WithoutPlus: return "E.164 Without Plus"
-        case .internationalPrefix: return "International Prefix"
-        case .national: return "National"
+        case .e164: return "International (+14155550123)"
+        case .e164WithoutPlus: return "International Without Plus (14155550123)"
+        case .internationalPrefix: return "International Prefix (011…)"
+        case .national: return "National (4155550123)"
         case .asTyped: return "As Typed"
         }
     }

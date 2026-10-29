@@ -76,8 +76,6 @@ enum AppScreen: Equatable {
     case accountList
     /// Connected to an account, showing main interface.
     case activeAccount
-    /// Active call in progress.
-    case activeCall
 }
 
 /// Simplified call state for UI display.
@@ -481,7 +479,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    /// Makes a call the displayed call and switches to the call screen.
+    /// Makes a call the displayed call and shows the call window.
     private func showCall(_ callInfo: CallInfo) {
         cancelPendingCleanup()
         activeCallID = callInfo.id
@@ -496,7 +494,7 @@ final class AppViewModel: ObservableObject {
             stopCallDurationTimer()
             callDuration = 0
         }
-        currentScreen = .activeCall
+        CallWindow.show()
     }
 
     /// Switches to the next available call or clears call state if none.
@@ -515,7 +513,7 @@ final class AppViewModel: ObservableObject {
             showCall(nextCall)
         } else {
             clearCallState()
-            currentScreen = activeAccount != nil ? .activeAccount : .accountList
+            CallWindow.close()
         }
     }
 
@@ -879,7 +877,7 @@ final class AppViewModel: ObservableObject {
             // Outgoing calls use the engine's default account
             try? TonePhoneCore.shared.setDefaultAccount(bridgeID)
         }
-        currentScreen = activeCalls.isEmpty ? .activeAccount : .activeCall
+        currentScreen = .activeAccount
         updateRegistrationStatus()
     }
 
@@ -897,6 +895,7 @@ final class AppViewModel: ObservableObject {
         updateDockBadge()
         clearCallState()
         activeCalls.removeAll()
+        CallWindow.close()
         currentScreen = .accountList
         updateRegistrationStatus()
     }
@@ -1070,6 +1069,15 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Ends every other call, then answers this one.
+    func endAndAnswerCall(_ callID: CallID) {
+        guard activeCalls[callID]?.isIncomingRinging == true else { return }
+        for other in activeCalls.values where other.id != callID && !other.isIncomingRinging {
+            hangupCall(other.id)
+        }
+        answerCall(callID)
+    }
+
     /// Declines an incoming call.
     func declineCall(_ callID: CallID) {
         if var callInfo = activeCalls[callID] {
@@ -1177,17 +1185,23 @@ final class AppViewModel: ObservableObject {
         showCall(callInfo)
     }
 
-    // MARK: - Navigation
-
-    /// Goes back to the calls list from the active call view.
-    func goBackToCallsList() {
-        currentScreen = .activeAccount
-    }
-
-    /// Shows the active call detail view.
-    func showActiveCall() {
-        guard activeCallID != nil else { return }
-        currentScreen = .activeCall
+    /// Holds the displayed call and resumes another one.
+    func switchToCall(_ callID: CallID) {
+        guard let callInfo = activeCalls[callID] else { return }
+        holdAllActiveCalls(except: callID)
+        if callInfo.isOnHold || callInfo.state == .held {
+            do {
+                try TonePhoneCore.shared.holdCall(callID, hold: false)
+                activeCalls[callID]?.isOnHold = false
+                activeCalls[callID]?.state = .established
+            } catch {
+                errorMessage = "The call couldn’t be resumed."
+                return
+            }
+        }
+        if let updated = activeCalls[callID] {
+            showCall(updated)
+        }
     }
 
     // MARK: - Audio Device Management

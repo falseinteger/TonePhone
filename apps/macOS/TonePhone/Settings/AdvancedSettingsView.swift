@@ -2,7 +2,7 @@
 //  AdvancedSettingsView.swift
 //  TonePhone
 //
-//  Advanced settings: NAT traversal, SIP, security, diagnostics.
+//  Advanced settings: STUN servers, NAT traversal, connection, certificates.
 //
 
 import AppKit
@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 
 struct AdvancedSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
-    @Environment(\.openWindow) private var openWindow
     @State private var showResetConfirmation = false
 
     private func importCertificates() {
@@ -30,10 +29,12 @@ struct AdvancedSettingsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("STUN servers") {
-                    STUNServerListEditor(servers: $settings.stunServers)
-                }
+                STUNServerListEditor(servers: $settings.stunServers)
+            } header: {
+                Text("STUN Servers")
+            }
 
+            Section {
                 Picker("NAT traversal", selection: $settings.natMethod) {
                     ForEach(NATMethod.allCases, id: \.self) { method in
                         Text(method.displayName).tag(method)
@@ -49,19 +50,26 @@ struct AdvancedSettingsView: View {
             }
 
             Section {
-                Picker("Keypad tones", selection: $settings.dtmfMode) {
-                    ForEach(DTMFMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-
                 Picker("Default transport", selection: $settings.defaultTransport) {
                     ForEach(SIPTransport.allCases, id: \.self) { transport in
                         Text(transport.displayName).tag(transport)
                     }
                 }
 
-                Toggle("Verify server certificates (TLS)", isOn: $settings.verifyTLSServer)
+                Picker("Keypad tones", selection: $settings.dtmfMode) {
+                    ForEach(DTMFMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+            } header: {
+                Text("Connection")
+            } footer: {
+                Text(settings.dtmfMode.description)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Verify server certificates", isOn: $settings.verifyTLSServer)
 
                 LabeledContent("Trusted certificates") {
                     HStack {
@@ -78,41 +86,9 @@ struct AdvancedSettingsView: View {
                     }
                 }
             } header: {
-                Text("SIP")
+                Text("Security")
             } footer: {
-                Text(settings.dtmfMode.description + " Import a certificate if your provider uses its own certificate authority. Certificate changes take effect the next time TonePhone opens.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Show diagnostics", isOn: $settings.advancedMode)
-
-                Picker("Log level", selection: $settings.logLevel) {
-                    ForEach(LogLevel.allCases, id: \.self) { level in
-                        Text(level.name).tag(level)
-                    }
-                }
-
-                if settings.advancedMode {
-                    Toggle("Log SIP messages", isOn: $settings.sipTrace)
-
-                    LabeledContent("Logs") {
-                        HStack {
-                            Button("Show Logs") {
-                                openWindow(id: LogViewerView.windowID)
-                            }
-                            Button("Export Logs…") {
-                                LogExporter.export()
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("Diagnostics")
-            } footer: {
-                Text(settings.advancedMode
-                     ? "SIP messages include phone numbers and addresses but never passwords. Turn this off when you’re done troubleshooting."
-                     : "Turn on to view the connection log and record SIP messages for troubleshooting.")
+                Text("Import a certificate if your provider uses its own certificate authority. Changes take effect the next time TonePhone opens.")
                     .foregroundStyle(.secondary)
             }
 
@@ -123,7 +99,7 @@ struct AdvancedSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: 560)
         .confirmationDialog("Reset all settings to their defaults?", isPresented: $showResetConfirmation) {
             Button("Reset", role: .destructive) {
                 settings.resetToDefaults()

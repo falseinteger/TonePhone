@@ -17,6 +17,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case accounts
     case audio
     case advanced
+    case diagnostics
 
     var id: String { rawValue }
 }
@@ -43,6 +44,10 @@ struct SettingsWindowView: View {
             AdvancedSettingsView()
                 .tabItem { Label("Advanced", systemImage: "gearshape.2") }
                 .tag(SettingsPane.advanced)
+
+            DiagnosticsSettingsView()
+                .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
+                .tag(SettingsPane.diagnostics)
         }
         .frame(width: 540)
     }

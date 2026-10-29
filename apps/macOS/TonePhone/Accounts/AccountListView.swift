@@ -83,27 +83,39 @@ struct AccountListView: View {
     // MARK: - Account List
 
     private var accountList: some View {
-        List(selection: $selection) {
-            ForEach(viewModel.accounts) { account in
-                AccountRowView(account: account, viewModel: viewModel)
-                    .tag(account.id)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Choose an Account")
+                .font(.title2.weight(.semibold))
+            Text("Double-click an account to connect. Calls and recents are kept per account.")
+                .foregroundStyle(.secondary)
+
+            List(selection: $selection) {
+                ForEach(viewModel.accounts) { account in
+                    AccountRowView(account: account, viewModel: viewModel)
+                        .tag(account.id)
+                }
+            }
+            .listStyle(.bordered(alternatesRowBackgrounds: false))
+            .frame(minHeight: 160, maxHeight: 360)
+            .contextMenu(forSelectionType: SIPAccount.ID.self) { ids in
+                if let account = account(for: ids.first) {
+                    Button("Connect") { viewModel.startConnection(for: account) }
+                    Button("Edit…") { viewModel.showEditAccountSheet(for: account) }
+                    Divider()
+                    Button("Delete…", role: .destructive) { accountPendingDeletion = account }
+                }
+            } primaryAction: { ids in
+                if let account = account(for: ids.first) {
+                    viewModel.startConnection(for: account)
+                }
+            }
+            .onDeleteCommand {
+                accountPendingDeletion = account(for: selection)
             }
         }
-        .contextMenu(forSelectionType: SIPAccount.ID.self) { ids in
-            if let account = account(for: ids.first) {
-                Button("Connect") { viewModel.startConnection(for: account) }
-                Button("Edit…") { viewModel.showEditAccountSheet(for: account) }
-                Divider()
-                Button("Delete…", role: .destructive) { accountPendingDeletion = account }
-            }
-        } primaryAction: { ids in
-            if let account = account(for: ids.first) {
-                viewModel.startConnection(for: account)
-            }
-        }
-        .onDeleteCommand {
-            accountPendingDeletion = account(for: selection)
-        }
+        .padding(32)
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func account(for id: SIPAccount.ID?) -> SIPAccount? {

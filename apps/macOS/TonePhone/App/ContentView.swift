@@ -43,8 +43,6 @@ struct ContentView: View {
             AccountListView(viewModel: viewModel)
         case .activeAccount:
             ActiveAccountView(viewModel: viewModel)
-        case .activeCall:
-            ActiveCallView(viewModel: viewModel)
         }
     }
 
@@ -72,5 +70,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .frame(width: 380, height: 560)
+        .frame(width: 860, height: 560)
 }
