@@ -85,6 +85,7 @@ typedef struct {
     const char *medianat;         /**< NAT traversal method (optional, e.g., "ice", "stun") */
     const char *media_encryption; /**< Media encryption (optional): "srtp", "srtp-mand", "dtls_srtp" */
     const char *dtmf_mode;        /**< DTMF mode (optional): "rtpevent", "info", "auto" */
+    const char *audio_codecs;     /**< Offered codecs in order (optional, e.g. "opus/48000/2,PCMU/8000/1"); NULL = all */
     uint32_t reg_interval;        /**< Registration interval in seconds (0 = 3600) */
     bool nat_pinhole;             /**< Enable NAT pinhole keep-alive (recommended for NAT) */
     bool mwi;                     /**< Subscribe to voicemail notifications (message-summary) */

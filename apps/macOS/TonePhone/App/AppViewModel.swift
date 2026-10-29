@@ -785,6 +785,8 @@ final class AppViewModel: ObservableObject {
             mediaNAT: natMethod == .none ? nil : natMethod.rawValue,
             mediaEncryption: account.mediaEncryption.engineValue,
             dtmfMode: dtmfMode.engineValue,
+            // Always explicit: without it the engine offers codecs in module order
+            audioCodecs: (account.audioCodecs ?? AudioCodec.defaultOrder).map(\.engineValue).joined(separator: ","),
             registrationInterval: UInt32(max(60, account.registrationInterval)),
             natPinhole: account.natPinholeOverride ?? settings.natPinhole,
             voicemailNotifications: account.voicemailNotifications,
