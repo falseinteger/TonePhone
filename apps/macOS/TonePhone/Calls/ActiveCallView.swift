@@ -223,6 +223,7 @@ struct IncomingCallView: View {
 /// A call that is connecting or connected: status, controls, End.
 struct InCallView: View {
     @ObservedObject var viewModel: AppViewModel
+    @ObservedObject private var settings = SettingsStore.shared
     @State private var showKeypad = false
     @State private var dtmfHistory = ""
 
@@ -277,6 +278,15 @@ struct InCallView: View {
             .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            if settings.advancedMode, isConnected, let id = viewModel.activeCallID {
+                // In the title bar, level with the window buttons
+                CallStatsButton(callID: id)
+                    .padding(.top, 6)
+                    .padding(.trailing, 10)
+                    .ignoresSafeArea(edges: .top)
+            }
+        }
         .onChange(of: viewModel.activeCallID) { _ in
             dtmfHistory = ""
             showKeypad = false

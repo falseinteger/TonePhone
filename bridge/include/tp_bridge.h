@@ -365,6 +365,36 @@ tp_error_t tp_call_mute(tp_call_id_t id, bool mute);
  */
 tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits);
 
+/**
+ * @brief Audio stream statistics of a call
+ *
+ * Packet counts and bitrates are measured locally. Loss, jitter and
+ * round-trip time come from RTCP reports and are only valid when
+ * has_rtcp is true (the first report arrives a few seconds into a call).
+ */
+typedef struct {
+    char codec[32];          /**< e.g. "opus/48000/2"; empty before media starts */
+    uint32_t tx_packets;     /**< RTP packets sent */
+    uint32_t rx_packets;     /**< RTP packets received */
+    uint32_t tx_bitrate;     /**< Current send bitrate in bit/s */
+    uint32_t rx_bitrate;     /**< Current receive bitrate in bit/s */
+    bool has_rtcp;           /**< Whether the fields below are valid */
+    int32_t tx_lost;         /**< Our packets the far end reported lost */
+    int32_t rx_lost;         /**< Far-end packets we lost */
+    uint32_t tx_jitter_us;   /**< Jitter the far end measured on our stream */
+    uint32_t rx_jitter_us;   /**< Jitter we measured on the far-end stream */
+    uint32_t rtt_us;         /**< Round-trip time */
+} tp_call_stats_t;
+
+/**
+ * @brief Get the audio statistics of a call
+ * @param id Call ID
+ * @param out Filled on success
+ * @return TP_OK, TP_ERR_NOT_FOUND if there is no such call or it has no
+ *         audio stream yet
+ */
+tp_error_t tp_call_get_stats(tp_call_id_t id, tp_call_stats_t *out);
+
 /* =============================================================================
  * Event Callback
  * ============================================================================= */

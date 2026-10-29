@@ -67,7 +67,7 @@ Key API groups (`bridge/include/tp_bridge.h`):
 - **Calls:** `tp_call_start()` (default account), `tp_call_answer()`, `tp_call_hangup()`, `tp_call_hold()`, `tp_call_mute()`, `tp_call_send_dtmf()`
 - **Audio devices:** `tp_audio_get_input_devices()`, `tp_audio_set_input_device()`, output equivalents
 - **Events:** `tp_set_event_callback(fn, ctx)`
-- **Diagnostics:** `tp_log_*()`, `tp_log_message()` (app messages into the same log), `tp_log_set_sip_trace()`; RTP statistics are not exposed yet
+- **Diagnostics:** `tp_log_*()`, `tp_log_message()` (app messages into the same log), `tp_log_set_sip_trace()`, `tp_call_get_stats()` (codec, packets, RTCP loss/jitter/RTT)
 
 ### Threading Rules
 

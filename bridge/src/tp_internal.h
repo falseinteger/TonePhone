@@ -108,6 +108,12 @@ tp_call_id_t tp_call_register(struct call *call);
  */
 void tp_call_unregister(tp_call_id_t id);
 
+/**
+ * @brief Write a one-line audio summary of a call to the log (call ending)
+ * @param call The call pointer from baresip
+ */
+void tp_call_log_summary(const struct call *call);
+
 /* =============================================================================
  * Audio Device Functions (from tp_audio.c)
  * ============================================================================= */

@@ -154,6 +154,7 @@ tp_error_t tp_call_hangup(tp_call_id_t id);
 tp_error_t tp_call_hold(tp_call_id_t id, bool hold);
 tp_error_t tp_call_mute(tp_call_id_t id, bool mute);
 tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits);
+tp_error_t tp_call_get_stats(tp_call_id_t id, tp_call_stats_t *out);
 ```
 
 ### Events
@@ -174,8 +175,10 @@ void tp_log_message(tp_log_level_t level, const char *message);  /* app messages
 tp_error_t tp_log_set_sip_trace(bool enabled);   /* credentials redacted */
 ```
 
-Per-call statistics (codec, jitter, loss) are not exposed yet. The app
-exports the log file itself.
+`tp_call_get_stats()` returns a call's codec, packet counts, bitrates and,
+once RTCP reports arrive, loss, jitter and round-trip time. When a call ends
+the bridge writes the same numbers to the log as one line. The app exports
+the log file itself.
 
 ### Design Principles
 
@@ -316,7 +319,7 @@ logs/
 - Log viewer window (Window › Logs) with level and SIP-message filters, search, pause
 - Copy selected entries; export the log file
 - Toggle SIP message tracing
-- Call statistics (codec, jitter, loss): not yet
+- Call statistics (codec, packets, loss, jitter, round trip) in the call window when diagnostics are on
 
 ### Diagnostics Bundle (planned)
 

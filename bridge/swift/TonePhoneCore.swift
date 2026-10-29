@@ -302,6 +302,30 @@ public struct CallEventDetails: Sendable, Equatable {
     public let accountID: AccountID
 }
 
+/// Audio statistics of a call.
+public struct CallStats: Sendable, Equatable {
+    /// Codec as "name/rate/channels", nil before media starts.
+    public let codec: String?
+    public let sentPackets: Int
+    public let receivedPackets: Int
+    /// Current bitrates in bit/s.
+    public let sendBitrate: Int
+    public let receiveBitrate: Int
+    /// From RTCP reports; nil until the first report arrives.
+    public let rtcp: RTCP?
+
+    public struct RTCP: Sendable, Equatable {
+        /// Our packets the far end reported lost.
+        public let sentLost: Int
+        /// Far-end packets we lost.
+        public let receivedLost: Int
+        /// Jitter in seconds, as measured by each side.
+        public let sendJitter: TimeInterval
+        public let receiveJitter: TimeInterval
+        public let roundTrip: TimeInterval
+    }
+}
+
 /// Events emitted by TonePhoneCore.
 public enum TonePhoneEvent: Sendable {
     case coreStateChanged(CoreState)
@@ -943,6 +967,34 @@ public final class TonePhoneCore {
         guard result == TP_OK else {
             throw TonePhoneError(from: result)
         }
+    }
+
+    /// Audio statistics of a call, nil when it has no audio stream yet.
+    public func callStats(_ callID: CallID) -> CallStats? {
+        var stats = tp_call_stats_t()
+        guard tp_call_get_stats(callID.rawValue, &stats) == TP_OK else {
+            return nil
+        }
+
+        let codec = withUnsafePointer(to: stats.codec) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: 32) { String(cString: $0) }
+        }
+        let rtcp = stats.has_rtcp ? CallStats.RTCP(
+            sentLost: Int(stats.tx_lost),
+            receivedLost: Int(stats.rx_lost),
+            sendJitter: TimeInterval(stats.tx_jitter_us) / 1_000_000,
+            receiveJitter: TimeInterval(stats.rx_jitter_us) / 1_000_000,
+            roundTrip: TimeInterval(stats.rtt_us) / 1_000_000
+        ) : nil
+
+        return CallStats(
+            codec: codec.isEmpty ? nil : codec,
+            sentPackets: Int(stats.tx_packets),
+            receivedPackets: Int(stats.rx_packets),
+            sendBitrate: Int(stats.tx_bitrate),
+            receiveBitrate: Int(stats.rx_bitrate),
+            rtcp: rtcp
+        )
     }
 
     // MARK: - Audio Device Management
