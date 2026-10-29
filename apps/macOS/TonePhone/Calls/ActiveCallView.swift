@@ -311,7 +311,7 @@ struct InCallView: View {
                 viewModel.toggleMute()
             }
             .disabled(!isConnected)
-            .help("Mute (⌘U)")
+            .help("Mute (⇧⌘M)")
 
             CircleActionButton(title: "Keypad", systemImage: "circle.grid.3x3.fill", tint: nil, isOn: showKeypad) {
                 showKeypad.toggle()
@@ -337,7 +337,7 @@ struct InCallView: View {
                 viewModel.toggleHold()
             }
             .disabled(!isConnected)
-            .help("Hold (⌘R)")
+            .help("Hold (⇧⌘H)")
         }
     }
 

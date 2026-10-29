@@ -8,6 +8,9 @@
 //  Trigger from Terminal:
 //    swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("io.falseinteger.tonephone.snapshot"), object: "/tmp/shots/name", userInfo: nil, deliverImmediately: true)'
 //
+//  Launch with `-TPAppearance dark` (or `light`) to check an appearance
+//  without changing the system setting.
+//
 
 #if DEBUG
 import AppKit
@@ -20,6 +23,11 @@ enum DebugSnapshot {
     /// Starts listening for snapshot requests.
     static func install() {
         guard observer == nil else { return }
+        switch UserDefaults.standard.string(forKey: "TPAppearance") {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
         observer = DistributedNotificationCenter.default().addObserver(
             forName: notificationName,
             object: nil,

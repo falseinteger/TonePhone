@@ -143,8 +143,8 @@ Accessibility is mandatory, not optional:
 | `Cmd+,` | Open settings |
 | `Return` / `Esc` | Accept / decline an incoming call (call window) |
 | `Cmd+Return` | Accept a ringing call, including a waiting call (Call menu) |
-| `Cmd+U` | Mute / unmute |
-| `Cmd+R` | Hold / resume |
+| `Shift+Cmd+M` | Mute / unmute (as in Phone and FaceTime) |
+| `Shift+Cmd+H` | Hold / resume |
 | `Cmd+D` | End call |
 | `Cmd+0` | Show the main window |
 | `Option+Cmd+L` | Logs window |

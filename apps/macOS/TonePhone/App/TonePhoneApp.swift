@@ -125,13 +125,14 @@ struct TonePhoneCommands: Commands {
             Button(viewModel.isMuted ? "Unmute" : "Mute") {
                 viewModel.toggleMute()
             }
-            .keyboardShortcut("u")
+            // Same as Phone and FaceTime
+            .keyboardShortcut("m", modifiers: [.command, .shift])
             .disabled(!isConnected)
 
             Button(viewModel.isOnHold ? "Resume" : "Hold") {
                 viewModel.toggleHold()
             }
-            .keyboardShortcut("r")
+            .keyboardShortcut("h", modifiers: [.command, .shift])
             .disabled(!isConnected)
 
             Menu("Audio Output") {
