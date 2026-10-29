@@ -58,8 +58,9 @@ struct CallStatsView: View {
                 row("Packets", stats.sentPackets.formatted(), stats.receivedPackets.formatted())
                 row("Bitrate", Self.kbps(stats.sendBitrate), Self.kbps(stats.receiveBitrate))
                 if let rtcp = stats.rtcp {
+                    // Sent packets include the lost ones; received packets don't
                     row("Lost", Self.lost(rtcp.sentLost, of: stats.sentPackets),
-                        Self.lost(rtcp.receivedLost, of: stats.receivedPackets))
+                        Self.lost(rtcp.receivedLost, of: stats.receivedPackets + rtcp.receivedLost))
                     row("Jitter", Self.ms(rtcp.sendJitter), Self.ms(rtcp.receiveJitter))
                     Divider()
                     row("Round trip", Self.ms(rtcp.roundTrip))
@@ -118,10 +119,11 @@ struct CallStatsView: View {
         "\(Int((seconds * 1000).rounded())) ms"
     }
 
-    /// "3 (0.4%)"; the far end can report a negative count after duplicates.
+    /// "3 (0.4%)" of the packets that were sent; the far end can report a
+    /// negative count after duplicates.
     static func lost(_ count: Int, of total: Int) -> String {
         guard count > 0, total > 0 else { return "0" }
-        let share = Double(count) / Double(count + total)
+        let share = Double(count) / Double(total)
         return "\(count) (\(share.formatted(.percent.precision(.fractionLength(1)))))"
     }
 }
