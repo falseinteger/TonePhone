@@ -146,6 +146,24 @@ create_openssl_fat_libs() {
     cp -R "$OPENSSL_DIR/macos-arm64/include/openssl" "$MACOS_FAT/include/"
 }
 
+# Create fat Opus library for macOS (arm64 + x86_64), if Opus was built.
+# The app links -lopus from output/macos-fat/lib.
+create_opus_fat_lib() {
+    local opus_dir="$PROJECT_ROOT/core/opus"
+    if [[ ! -f "$opus_dir/macos-arm64/lib/libopus.a" ]] || \
+       [[ ! -f "$opus_dir/macos-x86_64/lib/libopus.a" ]]; then
+        log_info "Opus not built, skipping libopus.a (run ./scripts/build-opus.sh)"
+        return 0
+    fi
+
+    log_info "Creating macOS fat library: libopus.a"
+    mkdir -p "$MACOS_FAT/lib"
+    lipo -create \
+        "$opus_dir/macos-arm64/lib/libopus.a" \
+        "$opus_dir/macos-x86_64/lib/libopus.a" \
+        -output "$MACOS_FAT/lib/libopus.a"
+}
+
 # Copy headers for fat library directories
 copy_headers() {
     log_info "Copying headers..."
@@ -284,6 +302,7 @@ main() {
 
     # Create fat OpenSSL libraries
     create_openssl_fat_libs
+    create_opus_fat_lib
 
     # Copy headers
     copy_headers

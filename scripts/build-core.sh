@@ -11,10 +11,14 @@
 #
 # Note: librem (rem) functionality is built into libre by default (USE_REM=ON).
 #
+# baresip is built from a copy in build/src/baresip with the patches in
+# core/patches/baresip/ applied, so the submodule stays at a clean upstream tag.
+#
 # Output: output/<platform>/lib/ and output/<platform>/include/
 #
 # Usage:
-#   ./scripts/build-core.sh
+#   ./scripts/build-core.sh              # all platforms
+#   ./scripts/build-core.sh --clean      # rebuild libre and baresip from scratch
 #
 # Requirements:
 #   - Xcode Command Line Tools (full Xcode for iOS SDKs)
@@ -52,7 +56,8 @@ PLATFORMS=(
 
 # Baresip modules to enable (semicolon-separated for CMake)
 # Base modules (always enabled)
-BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account"
+# netroam re-binds SIP transports when the Mac changes networks or wakes
+BARESIP_MODULES_BASE="audiounit;g711;stun;turn;ice;srtp;dtls_srtp;account;netroam"
 # Opus module (enabled automatically if libopus is available)
 # To build libopus, run: ./scripts/build-opus.sh
 OPUS_AVAILABLE=false
@@ -221,6 +226,28 @@ build_libre() {
 }
 
 # Build baresip for a single platform
+# Copy baresip to the build directory and apply TonePhone's patches
+prepare_baresip_source() {
+    local source_path="$BUILD_DIR/src/baresip"
+    local patch_dir="$CORE_DIR/patches/baresip"
+
+    log_info "Preparing baresip source with patches..."
+    rm -rf "$source_path"
+    mkdir -p "$source_path"
+    rsync -a --exclude .git "$CORE_DIR/baresip/" "$source_path/"
+
+    shopt -s nullglob
+    local patches=("$patch_dir"/*.patch)
+    shopt -u nullglob
+    for patch_file in "${patches[@]}"; do
+        log_info "  applying $(basename "$patch_file")"
+        if ! patch -p1 -d "$source_path" --forward --quiet < "$patch_file"; then
+            log_error "Patch failed: $patch_file (was baresip updated?)"
+            exit 1
+        fi
+    done
+}
+
 build_baresip() {
     local platform=$1
     local sdk=$2
@@ -289,7 +316,7 @@ build_baresip() {
         )
     fi
 
-    if ! cmake -S "$CORE_DIR/baresip" -B "$build_path" -G Ninja \
+    if ! cmake -S "$BUILD_DIR/src/baresip" -B "$build_path" -G Ninja \
         "${cmake_args[@]}" \
         > "$log_file" 2>&1; then
         log_error "[$platform] baresip configure failed. See log: $log_file"
@@ -311,7 +338,7 @@ build_baresip() {
     # Manual install: copy library and headers (skip cmake --install due to iOS bundle issues)
     mkdir -p "$install_path/lib" "$install_path/include"
     cp "$build_path/libbaresip.a" "$install_path/lib/"
-    cp "$CORE_DIR/baresip/include/baresip.h" "$install_path/include/"
+    cp "$BUILD_DIR/src/baresip/include/baresip.h" "$install_path/include/"
 
     log_info "[$platform] baresip build complete"
 }
@@ -323,6 +350,17 @@ main() {
     echo
 
     check_prerequisites
+
+    if [[ "${1:-}" == "--clean" ]]; then
+        log_info "Removing previous libre and baresip builds..."
+        for entry in "${PLATFORMS[@]}"; do
+            IFS=':' read -r platform _ _ <<< "$entry"
+            rm -rf "$BUILD_DIR/$platform" "$OUTPUT_DIR/$platform"
+        done
+    fi
+
+    mkdir -p "$BUILD_DIR"
+    prepare_baresip_source
 
     echo
     log_info "Building for ${#PLATFORMS[@]} platforms..."

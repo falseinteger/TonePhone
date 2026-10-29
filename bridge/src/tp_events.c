@@ -385,6 +385,7 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
     case BEVENT_END_OF_FILE:
     case BEVENT_CUSTOM:
     case BEVENT_SIPSESS_CONN:
+    case BEVENT_SIPSESS_FAILED:
     case BEVENT_MAX:
         /* Ignore these events for now */
         break;

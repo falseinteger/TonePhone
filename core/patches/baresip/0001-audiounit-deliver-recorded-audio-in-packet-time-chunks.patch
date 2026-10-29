@@ -1,0 +1,80 @@
+audiounit: deliver recorded audio in packet-time chunks
+
+The input callback asked the converter for inNumberFrames resampled frames.
+At high hardware sample rates that needs more input than the buffer holds
+(96 kHz to 8 kHz: 6144 frames for 512), so the callback returned before
+delivering anything and the far end heard silence. Render one packet time
+(srate * ptime) per iteration instead and offset the timestamp of each
+chunk within the callback.
+
+TonePhone carries this patch on top of the upstream release; see
+core/patches/README.md.
+
+---
+--- a/modules/audiounit/recorder.c
++++ b/modules/audiounit/recorder.c
+@@ -60,6 +60,7 @@
+ 	struct ausrc_st *st = inRefCon;
+ 	AudioBufferList abl_in, abl_conv;
+ 	uint32_t nb_frames, nb_frames_max;
++	uint32_t chunk, delivered = 0;
+ 	size_t framesz;
+ 	OSStatus ret;
+ 	int err;
+@@ -100,6 +101,12 @@
+ 		return ret;
+ 	}
+ 
++	/* Deliver one packet time of frames per converter render. Rendering
++	 * inNumberFrames needs inNumberFrames / sampc_ratio input frames,
++	 * which exceeds the input buffer at high hardware rates (96 kHz to
++	 * 8 kHz needs 6144 frames for 512), so no audio was ever sent. */
++	chunk = st->prm.srate * (st->prm.ptime ? st->prm.ptime : 20) / 1000;
++
+ 	while (1) {
+ 		struct auframe af;
+ 		uint64_t ts;
+@@ -111,32 +118,41 @@
+ 		/* Maximum number of resampled frames which can be delivered
+ 		   by the converter */
+ 		nb_frames_max = nb_frames * st->sampc_ratio;
+-		if (inNumberFrames > nb_frames_max)
++		if (chunk > nb_frames_max)
+ 			return noErr;
+ 
+ 		abl_conv.mNumberBuffers = 1;
+ 		abl_conv.mBuffers[0].mNumberChannels = st->prm.ch;
++		abl_conv.mBuffers[0].mDataByteSize = chunk * (UInt32)framesz;
+ 		abl_conv.mBuffers[0].mData = NULL;
+ 
+ 		ret = AudioUnitRender(st->au_conv,
+ 				      ioActionFlags,
+ 				      inTimeStamp,
+ 				      0,
+-				      inNumberFrames,
++				      chunk,
+ 				      &abl_conv);
+ 		if (ret) {
+ 			debug("audiounit: record: "
+ 			      "AudioUnitRender convert error (%d)\n", ret);
+ 			return ret;
+ 		}
++
++		if (!abl_conv.mBuffers[0].mData ||
++		    !abl_conv.mBuffers[0].mDataByteSize)
++			return noErr;
+ 
++		/* Offset each chunk after the first within this callback */
+ 		ts  = AUDIO_TIMEBASE*inTimeStamp->mSampleTime / st->prm.srate;
+ 		ts *= st->sampc_ratio;
++		ts += (uint64_t)delivered * AUDIO_TIMEBASE / st->prm.srate;
+ 
+ 		auframe_init(&af, st->prm.fmt, abl_conv.mBuffers[0].mData,
+ 			     abl_conv.mBuffers[0].mDataByteSize / st->sampsz,
+ 			     st->prm.srate, st->prm.ch);
+ 		af.timestamp = ts;
++
++		delivered += chunk;
+ 
+ 		rh(&af, arg);
+ 	}

@@ -520,6 +520,7 @@ public final class TonePhoneCore {
         module srtp.so
         module dtls_srtp.so
         module account.so
+        module netroam.so
 
         #------------------------------------------------------------
         # Audio
@@ -536,6 +537,9 @@ public final class TonePhoneCore {
         #------------------------------------------------------------
         sip_listen 0.0.0.0:0
         \(tlsLines)
+
+        # Re-register when the network changes (Wi-Fi switch, VPN, wake)
+        netroam_interval 10
 
         #------------------------------------------------------------
         # Calls
