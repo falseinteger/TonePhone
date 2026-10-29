@@ -25,7 +25,9 @@ address, port 5070.
 
 Debug builds write PNGs of their own windows when they receive the
 distributed notification `io.falseinteger.tonephone.snapshot` (object = path
-prefix); see `DebugSnapshot.swift`. This is how README screenshots are made.
+prefix); see `DebugSnapshot.swift`. `io.falseinteger.tonephone.dial`
+(object = number) places a call without typing; the dev server logs the
+codecs each call offers. This is how README screenshots are made.
 Launch a Debug build with `-TPAppearance dark` to check dark mode without
 changing the system setting.
 

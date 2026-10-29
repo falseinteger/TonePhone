@@ -213,6 +213,10 @@ static int apply_account_settings(struct ua *ua, const tp_account_config_t *conf
     if (config->outbound_proxy && config->outbound_proxy[0] != '\0')
         err |= account_set_outbound(acc, config->outbound_proxy, 0);
 
+    /* Codecs baresip doesn't have are skipped, not an error */
+    if (config->audio_codecs && config->audio_codecs[0] != '\0')
+        err |= account_set_audio_codecs(acc, config->audio_codecs);
+
     if (err)
         return err;
 
