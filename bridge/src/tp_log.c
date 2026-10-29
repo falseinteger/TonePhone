@@ -317,6 +317,16 @@ void tp_log_write(tp_log_level_t level, const char *fmt, ...)
     pthread_mutex_unlock(&g_log.mutex);
 }
 
+void tp_log_message(tp_log_level_t level, const char *message)
+{
+    if (!message)
+        return;
+
+    pthread_mutex_lock(&g_log.mutex);
+    write_log(level, message);
+    pthread_mutex_unlock(&g_log.mutex);
+}
+
 tp_error_t tp_log_get_path(char *buf, size_t size)
 {
     if (!buf || size == 0)

@@ -126,7 +126,7 @@ struct MicrophoneLevelMeter: View {
                 .accessibilityLabel("Microphone level")
                 .accessibilityValue("\(Int(monitor.level * 100)) percent")
 
-                Button(monitor.isMonitoring ? "Stop" : "Test Mic") {
+                Button(monitor.isMonitoring ? "Stop" : "Test Microphone") {
                     if monitor.isMonitoring {
                         monitor.stopMonitoring()
                     } else {

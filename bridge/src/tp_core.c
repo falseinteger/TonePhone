@@ -108,34 +108,44 @@ static void ua_exit_handler(void *arg)
     re_cancel();
 }
 
-/* Enable verbose SIP tracing (set to 1 for detailed SIP message dumps) */
-#ifndef TP_ENABLE_SIP_TRACE
-#define TP_ENABLE_SIP_TRACE 0
-#endif
-
-#if TP_ENABLE_SIP_TRACE
 /**
- * @brief SIP trace handler - logs all SIP messages for debugging
+ * @brief SIP trace handler - writes every SIP message to the log
  *
- * Note: Only enabled when TP_ENABLE_SIP_TRACE is defined.
- * SIP messages may contain sensitive information.
+ * Enabled at runtime with tp_log_set_sip_trace(). Authorization headers
+ * carry a digest response, not the password, but are still redacted so
+ * exported logs can be shared safely.
  */
 static void sip_trace_handler(bool tx, enum sip_transp tp,
                               const struct sa *src, const struct sa *dst,
                               const uint8_t *pkt, size_t len, void *arg)
 {
     (void)arg;
-    (void)pkt;
 
-    /* Log direction and transport - basic info only */
-    debug("tp_core: SIP %s via %s %J -> %J (len=%zu)\n",
-         tx ? ">>>" : "<<<",
-         tp == SIP_TRANSP_UDP ? "UDP" :
-         tp == SIP_TRANSP_TCP ? "TCP" :
-         tp == SIP_TRANSP_TLS ? "TLS" : "???",
-         src, dst, len);
+    char *copy = mem_zalloc(len + 1, NULL);
+    if (!copy)
+        return;
+
+    memcpy(copy, pkt, len);
+
+    /* Redact credentials: blank everything after the header name */
+    static const char *const redact[] = {
+        "\nAuthorization:", "\nProxy-Authorization:",
+    };
+    for (size_t i = 0; i < RE_ARRAY_SIZE(redact); i++) {
+        char *p = copy;
+        while ((p = strcasestr(p, redact[i])) != NULL) {
+            p += strlen(redact[i]);
+            while (*p && *p != '\r' && *p != '\n')
+                *p++ = '*';
+        }
+    }
+
+    info("tp_core: SIP %s %s %J -> %J\n%s\n",
+         tx ? "sent" : "received",
+         sip_transp_name(tp), src, dst, copy);
+
+    mem_deref(copy);
 }
-#endif
 
 /**
  * @brief Main loop thread entry point
@@ -261,11 +271,6 @@ tp_error_t tp_init(const char *config_path, const char *log_path)
 
     /* Set exit handler */
     uag_set_exit_handler(ua_exit_handler, NULL);
-
-#if TP_ENABLE_SIP_TRACE
-    /* Enable SIP tracing for debugging (disabled by default) */
-    sip_set_trace_handler(uag_sip(), sip_trace_handler);
-#endif
 
     /* Load configured modules */
     err = conf_modules();
@@ -413,7 +418,9 @@ tp_error_t tp_stop(void)
     info("tp_core: stopping...\n");
 
     /* Stop all user agents (this will trigger ua_exit_handler) */
+    re_thread_enter();
     ua_stop_all(false);
+    re_thread_leave();
 
     /* Signal the main loop to stop */
     re_cancel();
@@ -522,6 +529,30 @@ void tp_get_event_callback(tp_event_callback_t *cb_out, void **ctx_out)
     if (ctx_out)
         *ctx_out = g_bridge.event_ctx;
     pthread_mutex_unlock(&g_mutex);
+}
+
+/* =============================================================================
+ * Diagnostics
+ * ============================================================================= */
+
+tp_error_t tp_log_set_sip_trace(bool enabled)
+{
+    pthread_mutex_lock(&g_mutex);
+    bool ready = g_bridge.state == STATE_INITIALIZED ||
+                 g_bridge.state == STATE_STARTING ||
+                 g_bridge.state == STATE_RUNNING;
+    pthread_mutex_unlock(&g_mutex);
+
+    if (!ready)
+        return TP_ERR_NOT_INITIALIZED;
+
+    re_thread_enter();
+    sip_set_trace_handler(uag_sip(), enabled ? sip_trace_handler : NULL);
+    re_thread_leave();
+
+    info("tp_core: SIP message trace %s\n", enabled ? "enabled" : "disabled");
+
+    return TP_OK;
 }
 
 /* =============================================================================

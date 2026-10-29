@@ -2,120 +2,76 @@
 //  AudioSettingsView.swift
 //  TonePhone
 //
-//  Audio settings: input/output device selection, mic test, ringtone.
+//  Audio settings: devices, microphone test and access, ringtone.
 //
 
+import AVFoundation
 import SwiftUI
 
 struct AudioSettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var viewModel = AppViewModel.shared
+    @State private var microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Audio")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                // Output
-                SettingsSection(title: "Output Device") {
-                    deviceList(devices: viewModel.outputDevices, selected: viewModel.selectedOutputDevice, forInput: false)
+        Form {
+            Section("Devices") {
+                AudioDevicePicker(
+                    title: "Output",
+                    devices: viewModel.outputDevices,
+                    selection: viewModel.selectedOutputDevice,
+                    defaultName: viewModel.getDefaultOutputDeviceName(),
+                    onSelect: viewModel.selectOutputDevice
+                )
+                AudioDevicePicker(
+                    title: "Input",
+                    devices: viewModel.inputDevices,
+                    selection: viewModel.selectedInputDevice,
+                    defaultName: viewModel.getDefaultInputDeviceName(),
+                    onSelect: viewModel.selectInputDevice
+                )
+                LabeledContent("Input level") {
+                    MicrophoneLevelMeter()
                 }
-
-                // Input
-                SettingsSection(title: "Input Device") {
-                    deviceList(devices: viewModel.inputDevices, selected: viewModel.selectedInputDevice, forInput: true)
-                    Divider().padding(.horizontal, 12)
-
-                    SettingsRow(label: "Mic Test") {
-                        MicrophoneLevelMeter()
-                    }
-                }
-
-                // Ringtone
-                SettingsSection(title: "Ringtone") {
-                    RingtonePickerView(selectedRingtone: $settings.selectedRingtone)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                }
-
-                Spacer()
             }
-            .padding(24)
+
+            Section {
+                RingtonePickerView(selectedRingtone: $settings.selectedRingtone)
+                LabeledContent("Microphone access") {
+                    microphoneStatusView
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             viewModel.refreshAudioDevices()
+            microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         }
     }
 
-    // MARK: - Device List
-
     @ViewBuilder
-    private func deviceList(devices: [AudioDevice], selected: AudioDevice?, forInput: Bool) -> some View {
-        if devices.isEmpty {
-            Text("No devices found")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-        } else {
-            // System Default option
-            let isDefaultSelected = selected == nil
-            HStack(spacing: 10) {
-                Image(systemName: isDefaultSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isDefaultSelected ? .accentColor : .secondary)
-                Text("System Default")
-                    .font(.system(size: 13))
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isDefaultSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if forInput {
-                    viewModel.selectInputDevice(nil)
-                } else {
-                    viewModel.selectOutputDevice(nil)
-                }
-            }
-
-            ForEach(devices) { device in
-                let isSelected = device.id == selected?.id
-                HStack(spacing: 10) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(isSelected ? .accentColor : .secondary)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(device.name)
-                            .font(.system(size: 13))
-
-                        if device.isDefault {
-                            Text("System Default")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
+    private var microphoneStatusView: some View {
+        switch microphoneStatus {
+        case .authorized:
+            Text("Allowed")
+                .foregroundStyle(.secondary)
+        case .notDetermined:
+            Button("Allow Access…") {
+                AVCaptureDevice.requestAccess(for: .audio) { _ in
+                    DispatchQueue.main.async {
+                        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
                     }
-
-                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if forInput {
-                        viewModel.selectInputDevice(device)
-                    } else {
-                        viewModel.selectOutputDevice(device)
+            }
+        default:
+            HStack {
+                Label("Not Allowed", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                Button("Open System Settings…") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                        NSWorkspace.shared.open(url)
                     }
                 }
             }
@@ -123,7 +79,30 @@ struct AudioSettingsView: View {
     }
 }
 
+/// Pop-up button for choosing an audio device, with System Default first.
+struct AudioDevicePicker: View {
+    let title: String
+    let devices: [AudioDevice]
+    let selection: AudioDevice?
+    let defaultName: String?
+    let onSelect: (AudioDevice?) -> Void
+
+    var body: some View {
+        Picker(title, selection: Binding(
+            get: { selection?.id ?? "" },
+            set: { id in onSelect(devices.first { $0.id == id }) }
+        )) {
+            Text(defaultName.map { "System Default (\($0))" } ?? "System Default").tag("")
+            if !devices.isEmpty {
+                Divider()
+            }
+            ForEach(devices) { device in
+                Text(device.name).tag(device.id)
+            }
+        }
+    }
+}
+
 #Preview("Audio Settings") {
     AudioSettingsView()
-        .frame(width: 500, height: 600)
 }

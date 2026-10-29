@@ -182,14 +182,15 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
     if (!call)
         return;
 
-    /* For incoming calls, register them first */
-    if (ev == BEVENT_CALL_INCOMING) {
-        call_id = tp_call_register_incoming(call);
+    /* New calls are registered on their first event. Outgoing calls fire
+     * BEVENT_CALL_OUTGOING from inside ua_connect, before tp_call_start
+     * returns, so they must be registered here too. */
+    if (ev == BEVENT_CALL_INCOMING || ev == BEVENT_CALL_OUTGOING) {
+        call_id = tp_call_register(call);
         if (call_id == TP_INVALID_ID) {
-            warning("tp_events: failed to register incoming call\n");
+            warning("tp_events: failed to register call\n");
             return;
         }
-        info("tp_events: registered incoming call %u\n", call_id);
     } else {
         call_id = get_call_id_for_call(call);
         if (call_id == TP_INVALID_ID) {
@@ -210,6 +211,7 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
         return;
 
     const char *peer_uri = call_peeruri(call);
+    const char *peer_name = call_peername(call);
     const char *text = bevent_get_text(event);
 
     tp_event_t tp_event = {
@@ -218,7 +220,9 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
             .id = call_id,
             .state = state,
             .remote_uri = peer_uri,
+            .remote_name = peer_name,
             .reason = (state == TP_CALL_STATE_ENDED) ? text : NULL,
+            .account_id = tp_account_find_id_by_ua(call_get_ua(call)),
         },
     };
 
@@ -296,15 +300,53 @@ static void handle_media_event(enum bevent_ev ev, struct bevent *event)
     if (!cb)
         return;
 
+    /* MENC events also report verification requests; only the stream
+     * state says whether audio is actually encrypted */
+    struct audio *au = call_audio(call);
+    bool encrypted = au && stream_is_secure(audio_strm(au));
+
     tp_event_t tp_event = {
         .type = TP_EVENT_CALL_MEDIA_CHANGED,
         .data.media = {
             .id = get_call_id_for_call(call),
             .audio_established = (ev == BEVENT_CALL_RTPESTAB),
-            .video_established = false,  /* TODO: check video state */
-            .encrypted = (ev == BEVENT_CALL_MENC),
+            .video_established = false,
+            .encrypted = encrypted,
         },
     };
+
+    cb(&tp_event, ctx);
+}
+
+/**
+ * @brief Handle voicemail notifications from the mwi module
+ */
+static void handle_mwi_event(struct bevent *event)
+{
+    tp_event_callback_t cb;
+    void *ctx;
+
+    struct ua *ua = bevent_get_ua(event);
+    if (!ua)
+        return;
+
+    tp_account_id_t account_id = tp_account_find_id_by_ua(ua);
+    if (account_id == TP_INVALID_ID)
+        return;
+
+    tp_get_event_callback(&cb, &ctx);
+    if (!cb)
+        return;
+
+    tp_event_t tp_event = {
+        .type = TP_EVENT_MESSAGE_WAITING,
+        .data.mwi = {
+            .account_id = account_id,
+            .summary = bevent_get_text(event),
+        },
+    };
+
+    info("tp_events: voicemail status for account %u\n", account_id);
 
     cb(&tp_event, ctx);
 }
@@ -356,6 +398,10 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
         handle_media_event(ev, event);
         break;
 
+    case BEVENT_MWI_NOTIFY:
+        handle_mwi_event(event);
+        break;
+
     /* Core events - handled by tp_core.c */
     case BEVENT_SHUTDOWN:
     case BEVENT_EXIT:
@@ -364,7 +410,6 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
 
     /* Events we don't forward (yet) */
     case BEVENT_CREATE:
-    case BEVENT_MWI_NOTIFY:
     case BEVENT_CALL_TRANSFER:
     case BEVENT_CALL_REDIRECT:
     case BEVENT_CALL_TRANSFER_FAILED:
@@ -381,6 +426,7 @@ static void baresip_event_handler(enum bevent_ev ev, struct bevent *event,
     case BEVENT_END_OF_FILE:
     case BEVENT_CUSTOM:
     case BEVENT_SIPSESS_CONN:
+    case BEVENT_SIPSESS_FAILED:
     case BEVENT_MAX:
         /* Ignore these events for now */
         break;

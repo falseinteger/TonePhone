@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ABA76E662F60747100C58837 /* PhoneNumberKit in Frameworks */ = {isa = PBXBuildFile; productRef = F0000006DDDDDDDD00000001 /* PhoneNumberKit */; };
 		F0000001AAAAAAAA00000001 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000001 /* AudioToolbox.framework */; };
 		F0000001AAAAAAAA00000002 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000002 /* AudioUnit.framework */; };
 		F0000001AAAAAAAA00000003 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0000002AAAAAAAA00000003 /* CoreAudio.framework */; };
@@ -69,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABA76E662F60747100C58837 /* PhoneNumberKit in Frameworks */,
 				F0000001AAAAAAAA00000001 /* AudioToolbox.framework in Frameworks */,
 				F0000001AAAAAAAA00000002 /* AudioUnit.framework in Frameworks */,
 				F0000001AAAAAAAA00000003 /* CoreAudio.framework in Frameworks */,

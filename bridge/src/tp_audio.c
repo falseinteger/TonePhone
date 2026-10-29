@@ -418,8 +418,15 @@ tp_error_t tp_audio_set_input_device(const char *device_name)
 
     pthread_mutex_unlock(&g_mutex);
 
-    /* Apply to active calls - need to enter re thread context */
+    /* Apply to active calls and to the config used for new calls -
+     * need to enter re thread context */
     re_thread_enter();
+    struct config *cfg = conf_config();
+    if (cfg) {
+        str_ncpy(cfg->audio.src_dev,
+                 device_name ? device_name : "",
+                 sizeof(cfg->audio.src_dev));
+    }
     result = apply_audio_device_to_calls(true, device_name);
     re_thread_leave();
 
@@ -444,8 +451,15 @@ tp_error_t tp_audio_set_output_device(const char *device_name)
 
     pthread_mutex_unlock(&g_mutex);
 
-    /* Apply to active calls - need to enter re thread context */
+    /* Apply to active calls and to the config used for new calls -
+     * need to enter re thread context */
     re_thread_enter();
+    struct config *cfg = conf_config();
+    if (cfg) {
+        str_ncpy(cfg->audio.play_dev,
+                 device_name ? device_name : "",
+                 sizeof(cfg->audio.play_dev));
+    }
     result = apply_audio_device_to_calls(false, device_name);
     re_thread_leave();
 
