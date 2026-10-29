@@ -2,138 +2,154 @@
 //  AccountsSettingsView.swift
 //  TonePhone
 //
-//  Account list and per-account settings access.
+//  Accounts pane: list of accounts with add, remove and edit.
 //
 
 import SwiftUI
 
 struct AccountsSettingsView: View {
-    @State private var accounts: [SIPAccount] = []
+    @ObservedObject private var viewModel = AppViewModel.shared
+    @State private var selection: SIPAccount.ID?
     @State private var editingAccount: SIPAccount?
+    @State private var isAddingAccount = false
+    @State private var accountPendingDeletion: SIPAccount?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Accounts")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                if accounts.isEmpty {
-                    emptyState
-                } else {
-                    accountList
+        VStack(alignment: .leading, spacing: 0) {
+            List(selection: $selection) {
+                ForEach(viewModel.accounts) { account in
+                    AccountSettingsRow(
+                        account: account,
+                        isConnected: viewModel.activeAccount?.id == account.id
+                    )
+                    .tag(account.id)
                 }
+            }
+            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .contextMenu(forSelectionType: SIPAccount.ID.self) { ids in
+                if let account = account(for: ids.first) {
+                    Button("Edit…") { editingAccount = account }
+                    Divider()
+                    Button("Delete…", role: .destructive) { accountPendingDeletion = account }
+                }
+            } primaryAction: { ids in
+                editingAccount = account(for: ids.first)
+            }
+            .onDeleteCommand {
+                accountPendingDeletion = account(for: selection)
+            }
+            .overlay {
+                if viewModel.accounts.isEmpty {
+                    Text("No Accounts")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Add/remove buttons beneath the list
+            HStack(spacing: 0) {
+                Button {
+                    isAddingAccount = true
+                } label: {
+                    Label("Add Account", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 24, height: 20)
+                }
+                .help("Add Account")
+
+                Divider().frame(height: 16)
+
+                Button {
+                    accountPendingDeletion = account(for: selection)
+                } label: {
+                    Label("Delete Account", systemImage: "minus")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 24, height: 20)
+                }
+                .disabled(selection == nil)
+                .help("Delete Account")
 
                 Spacer()
+
+                Button("Edit…") {
+                    editingAccount = account(for: selection)
+                }
+                .disabled(selection == nil)
             }
-            .padding(24)
+            .buttonStyle(.borderless)
+            .padding(.top, 8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { accounts = AccountStore.shared.loadAccounts() }
+        .padding(20)
+        .frame(height: 320)
         .sheet(item: $editingAccount) { account in
-            AccountSettingsDetailView(account: account) { updated in
-                AccountStore.shared.saveAccount(updated)
-                accounts = AccountStore.shared.loadAccounts()
-                NotificationCenter.default.post(name: .accountSettingsChanged, object: updated.id)
+            AccountConfigView(account: account)
+                .onSave { updated, password in
+                    viewModel.saveAccount(updated, password: password)
+                }
+                .onDelete { id in
+                    viewModel.deleteAccount(id: id)
+                }
+        }
+        .sheet(isPresented: $isAddingAccount) {
+            AccountConfigView()
+                .onSave { account, password in
+                    viewModel.saveAccount(account, password: password)
+                }
+        }
+        .confirmationDialog(
+            "Delete \(accountPendingDeletion?.title ?? "account")?",
+            isPresented: Binding(
+                get: { accountPendingDeletion != nil },
+                set: { if !$0 { accountPendingDeletion = nil } }
+            ),
+            presenting: accountPendingDeletion
+        ) { account in
+            Button("Delete", role: .destructive) {
+                viewModel.deleteAccount(id: account.id)
+                selection = nil
             }
-            .frame(minWidth: 480, minHeight: 480)
+        } message: { _ in
+            Text("The account and its saved password are removed from this Mac.")
         }
     }
 
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "person.crop.circle.badge.plus")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-
-            Text("No Accounts")
-                .font(.headline)
-                .foregroundColor(.secondary)
-
-            Text("Add an account from the main window to configure account-specific settings.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 280)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+    private func account(for id: SIPAccount.ID?) -> SIPAccount? {
+        guard let id else { return nil }
+        return viewModel.accounts.first { $0.id == id }
     }
+}
 
-    // MARK: - Account List
+private struct AccountSettingsRow: View {
+    let account: SIPAccount
+    let isConnected: Bool
 
-    private var accountList: some View {
-        SettingsSection(title: "Configured Accounts") {
-            ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
-                if index > 0 {
-                    Divider().padding(.horizontal, 12)
-                }
-                accountRow(account)
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(account.title)
+                Text(account.address)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if isConnected {
+                Label("Connected", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.green)
+            }
+            if account.autoLogin {
+                Text("Connects automatically")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func accountRow(_ account: SIPAccount) -> some View {
-        Button {
-            editingAccount = account
-        } label: {
-            HStack(spacing: 12) {
-                // Avatar
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.15))
-                        .frame(width: 36, height: 36)
-
-                    Text(account.initials)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.accentColor)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(account.displayName.isEmpty ? account.username : account.displayName)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
-
-                    HStack(spacing: 4) {
-                        Text(account.server)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-
-                        if account.hasOverrides {
-                            Text("(custom)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if account.autoLogin {
-                    Text("Default")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor)
-                        .cornerRadius(4)
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 
 #Preview("Accounts Settings") {
     AccountsSettingsView()
-        .frame(width: 500, height: 400)
 }

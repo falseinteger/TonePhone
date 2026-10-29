@@ -5,53 +5,39 @@
 //  Manages app settings persistence using UserDefaults.
 //
 
-import AppKit
 import Foundation
 import SwiftUI
 
-/// Appearance mode for the app.
-enum AppearanceMode: String, Codable, CaseIterable {
-    case light
-    case dark
-    case auto
-
-    var displayName: String {
-        switch self {
-        case .auto: return "Auto"
-        case .light: return "Light"
-        case .dark: return "Dark"
-        }
-    }
-
-    /// Returns the NSAppearance for the mode, or nil for system auto.
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .light: return NSAppearance(named: .aqua)
-        case .dark: return NSAppearance(named: .darkAqua)
-        case .auto: return nil
-        }
-    }
-}
-
 /// DTMF transmission mode for SIP calls.
+///
+/// Raw values are kept stable for saved settings; `engineValue` is what the
+/// SIP engine understands.
 enum DTMFMode: String, Codable, CaseIterable {
     case rfc2833 = "rfc2833"
     case sipInfo = "info"
-    case inband = "inband"
+    case automatic = "auto"
 
     var displayName: String {
         switch self {
-        case .rfc2833: return "RFC 2833"
+        case .rfc2833: return "RTP Events (RFC 2833)"
         case .sipInfo: return "SIP INFO"
-        case .inband: return "In-band"
+        case .automatic: return "Automatic"
         }
     }
 
     var description: String {
         switch self {
-        case .rfc2833: return "Send DTMF as RTP events (recommended)"
-        case .sipInfo: return "Send DTMF via SIP INFO messages"
-        case .inband: return "Send DTMF as audio tones"
+        case .rfc2833: return "Send keypad tones as RTP events. Works with most providers."
+        case .sipInfo: return "Send keypad tones as SIP INFO messages."
+        case .automatic: return "Use RTP events when the other side supports them, otherwise SIP INFO."
+        }
+    }
+
+    var engineValue: String {
+        switch self {
+        case .rfc2833: return "rtpevent"
+        case .sipInfo: return "info"
+        case .automatic: return "auto"
         }
     }
 }
@@ -96,11 +82,11 @@ final class SettingsStore: ObservableObject {
         static let natMethod = "settings.natMethod"
         static let natPinhole = "settings.natPinhole"
         static let dtmfMode = "settings.dtmfMode"
-        static let rtcpFeedback = "settings.rtcpFeedback"
+        static let verifyTLSServer = "settings.verifyTLSServer"
+        static let advancedMode = "settings.advancedMode"
+        static let sipTrace = "settings.sipTrace"
         static let registerOnStartup = "settings.registerOnStartup"
-        static let appearanceMode = "settings.appearanceMode"
         static let selectedRingtone = "settings.selectedRingtone"
-        static let phoneNumberRegion = "settings.phoneNumberRegion"
     }
 
     // MARK: - Default Values
@@ -113,11 +99,9 @@ final class SettingsStore: ObservableObject {
         static let natMethod = "stun"
         static let natPinhole = true
         static let dtmfMode = "rfc2833"
-        static let rtcpFeedback = true
+        static let verifyTLSServer = true
         static let registerOnStartup = true
-        static let appearanceMode = "auto"
         static let selectedRingtone = "Ping.aiff"
-        static let phoneNumberRegion = ""  // Empty means use system locale
     }
 
     // MARK: - Published Properties
@@ -176,10 +160,26 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// Enable RTCP feedback.
-    @Published var rtcpFeedback: Bool {
+    /// Verify the server certificate on TLS connections. Applies on next launch.
+    @Published var verifyTLSServer: Bool {
         didSet {
-            defaults.set(rtcpFeedback, forKey: Keys.rtcpFeedback)
+            defaults.set(verifyTLSServer, forKey: Keys.verifyTLSServer)
+        }
+    }
+
+    /// Shows diagnostic tools: the log viewer and SIP message tracing.
+    @Published var advancedMode: Bool {
+        didSet {
+            defaults.set(advancedMode, forKey: Keys.advancedMode)
+            if !advancedMode { sipTrace = false }
+        }
+    }
+
+    /// Write every SIP message to the log.
+    @Published var sipTrace: Bool {
+        didSet {
+            defaults.set(sipTrace, forKey: Keys.sipTrace)
+            TonePhoneCore.shared.setSIPTraceEnabled(sipTrace)
         }
     }
 
@@ -187,14 +187,6 @@ final class SettingsStore: ObservableObject {
     @Published var registerOnStartup: Bool {
         didSet {
             defaults.set(registerOnStartup, forKey: Keys.registerOnStartup)
-        }
-    }
-
-    /// Appearance mode (light, dark, auto).
-    @Published var appearanceMode: AppearanceMode {
-        didSet {
-            defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode)
-            applyAppearance()
         }
     }
 
@@ -208,7 +200,37 @@ final class SettingsStore: ObservableObject {
     /// Phone number region code for formatting (e.g. "US", "GB"). Empty means system locale.
     @Published var phoneNumberRegion: String {
         didSet {
-            defaults.set(phoneNumberRegion, forKey: Keys.phoneNumberRegion)
+            defaults.set(phoneNumberRegion, forKey: PhoneNumberSettingsKey.region)
+            notifyPhoneNumberFormatChanged()
+        }
+    }
+
+    /// How phone numbers are shown.
+    @Published var phoneNumberDisplayFormat: PhoneNumberDisplayFormat {
+        didSet {
+            defaults.set(phoneNumberDisplayFormat.rawValue, forKey: PhoneNumberSettingsKey.displayFormat)
+            notifyPhoneNumberFormatChanged()
+        }
+    }
+
+    /// How dialed numbers are sent to the server (accounts can override).
+    @Published var phoneNumberDialFormat: PhoneNumberDialFormat {
+        didSet {
+            defaults.set(phoneNumberDialFormat.rawValue, forKey: PhoneNumberSettingsKey.dialFormat)
+        }
+    }
+
+    /// Digits that replace `+` with the international prefix dial format. Empty uses the region default.
+    @Published var internationalPrefix: String {
+        didSet {
+            defaults.set(internationalPrefix, forKey: PhoneNumberSettingsKey.internationalPrefix)
+        }
+    }
+
+    /// Format numbers in the dialpad while typing.
+    @Published var formatAsYouType: Bool {
+        didSet {
+            defaults.set(formatAsYouType, forKey: PhoneNumberSettingsKey.formatAsYouType)
         }
     }
 
@@ -245,11 +267,9 @@ final class SettingsStore: ObservableObject {
         let dtmfModeString = defaults.string(forKey: Keys.dtmfMode) ?? Defaults.dtmfMode
         self.dtmfMode = DTMFMode(rawValue: dtmfModeString) ?? .rfc2833
 
-        if defaults.object(forKey: Keys.rtcpFeedback) != nil {
-            self.rtcpFeedback = defaults.bool(forKey: Keys.rtcpFeedback)
-        } else {
-            self.rtcpFeedback = Defaults.rtcpFeedback
-        }
+        self.verifyTLSServer = defaults.object(forKey: Keys.verifyTLSServer) as? Bool ?? Defaults.verifyTLSServer
+        self.advancedMode = defaults.bool(forKey: Keys.advancedMode)
+        self.sipTrace = defaults.bool(forKey: Keys.sipTrace)
 
         if defaults.object(forKey: Keys.registerOnStartup) != nil {
             self.registerOnStartup = defaults.bool(forKey: Keys.registerOnStartup)
@@ -257,15 +277,17 @@ final class SettingsStore: ObservableObject {
             self.registerOnStartup = Defaults.registerOnStartup
         }
 
-        let appearanceModeString = defaults.string(forKey: Keys.appearanceMode) ?? Defaults.appearanceMode
-        self.appearanceMode = AppearanceMode(rawValue: appearanceModeString) ?? .auto
-
         self.selectedRingtone = defaults.string(forKey: Keys.selectedRingtone) ?? Defaults.selectedRingtone
-        self.phoneNumberRegion = defaults.string(forKey: Keys.phoneNumberRegion) ?? Defaults.phoneNumberRegion
+        self.phoneNumberRegion = defaults.string(forKey: PhoneNumberSettingsKey.region) ?? ""
+        self.phoneNumberDisplayFormat = PhoneNumberService.displayFormat
+        self.phoneNumberDialFormat = PhoneNumberService.dialFormat
+        self.internationalPrefix = defaults.string(forKey: PhoneNumberSettingsKey.internationalPrefix) ?? ""
+        self.formatAsYouType = PhoneNumberService.formatsAsYouType
 
         // Apply settings on init
         applyLogLevel()
-        applyAppearance()
+        // The app follows the system appearance; clear any override saved by older versions
+        defaults.removeObject(forKey: "settings.appearanceMode")
     }
 
     // MARK: - Actions
@@ -275,9 +297,20 @@ final class SettingsStore: ObservableObject {
         TonePhoneCore.shared.setLogLevel(logLevel)
     }
 
-    /// Apply the appearance mode to all app windows.
-    func applyAppearance() {
-        NSApp.appearance = appearanceMode.nsAppearance
+    /// Apply diagnostics settings once the SIP engine is running.
+    func applyCoreSettings() {
+        applyLogLevel()
+        TonePhoneCore.shared.setSIPTraceEnabled(advancedMode && sipTrace)
+    }
+
+    /// Engine options written to the config file at start.
+    var coreOptions: CoreOptions {
+        CoreOptions(verifyTLSServer: verifyTLSServer)
+    }
+
+    /// Phone number settings changed; views that show numbers re-render.
+    private func notifyPhoneNumberFormatChanged() {
+        NotificationCenter.default.post(name: .phoneNumberFormatDidChange, object: nil)
     }
 
     /// Reset all settings to defaults.
@@ -289,10 +322,18 @@ final class SettingsStore: ObservableObject {
         natMethod = NATMethod(rawValue: Defaults.natMethod) ?? .stun
         natPinhole = Defaults.natPinhole
         dtmfMode = DTMFMode(rawValue: Defaults.dtmfMode) ?? .rfc2833
-        rtcpFeedback = Defaults.rtcpFeedback
+        verifyTLSServer = Defaults.verifyTLSServer
+        sipTrace = false
         registerOnStartup = Defaults.registerOnStartup
-        appearanceMode = AppearanceMode(rawValue: Defaults.appearanceMode) ?? .auto
         selectedRingtone = Defaults.selectedRingtone
-        phoneNumberRegion = Defaults.phoneNumberRegion
+        phoneNumberRegion = ""
+        phoneNumberDisplayFormat = .international
+        phoneNumberDialFormat = .e164
+        internationalPrefix = ""
+        formatAsYouType = true
     }
+}
+
+extension Notification.Name {
+    static let phoneNumberFormatDidChange = Notification.Name("com.tonephone.phoneNumberFormatDidChange")
 }

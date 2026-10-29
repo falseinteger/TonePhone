@@ -3,54 +3,67 @@
 //  TonePhone
 //
 //  View model for the main application state.
-//  Subscribes to TonePhoneCore events and tracks account registration status.
+//  Subscribes to TonePhoneCore events and tracks account registration and calls.
 //
 
 import SwiftUI
 import Combine
 import AVFoundation
 
-/// Simplified registration status for UI display.
-///
-/// Aggregates multiple account states into a single status for the main window.
+/// Registration status of the account the window is working with.
 enum RegistrationStatus: Equatable {
     /// No SIP accounts have been configured.
     case notConfigured
-    /// At least one account is currently registering.
+    /// Accounts exist but none is connected.
+    case offline
+    /// The account is registering.
     case registering
-    /// At least one account is successfully registered.
+    /// The account is registered.
     case registered
-    /// All accounts have failed to register.
+    /// Registration failed.
     case failed(reason: String?)
 
     /// Human-readable text for display in the UI.
     var displayText: String {
         switch self {
         case .notConfigured:
-            return "Not configured"
+            return "No Account"
+        case .offline:
+            return "Not Connected"
         case .registering:
-            return "Registering..."
+            return "Connecting…"
         case .registered:
-            return "Registered"
+            return "Connected"
         case .failed(let reason):
-            if let reason = reason {
-                return "Failed: \(reason)"
-            }
-            return "Registration failed"
+            return reason ?? "Connection Failed"
         }
     }
 
-    /// Color for the status indicator circle.
+    /// Color for the status indicator. Always paired with `displayText` or `symbolName`.
     var indicatorColor: Color {
         switch self {
-        case .notConfigured:
-            return .gray
+        case .notConfigured, .offline:
+            return .secondary
         case .registering:
             return .orange
         case .registered:
             return .green
         case .failed:
             return .red
+        }
+    }
+
+    /// SF Symbol that conveys the status without relying on color.
+    var symbolName: String {
+        switch self {
+        case .notConfigured, .offline:
+            return "circle.dashed"
+        case .registering:
+            return "arrow.triangle.2.circlepath"
+        case .registered:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
         }
     }
 }
@@ -80,9 +93,8 @@ enum UICallState: Equatable {
 
 /// Main view model for tracking application state.
 ///
-/// Subscribes to `TonePhoneCore.events` and maintains a map of account states.
-/// Publishes an aggregated `registrationStatus` for the UI to display.
-/// Also manages account configuration and persistence.
+/// Subscribes to `TonePhoneCore.events`, owns the account connection flow
+/// and the list of calls, and records call history.
 @MainActor
 final class AppViewModel: ObservableObject {
     /// Shared singleton instance for cross-window access (e.g., Settings).
@@ -90,7 +102,7 @@ final class AppViewModel: ObservableObject {
     /// Current screen being displayed.
     @Published private(set) var currentScreen: AppScreen = .accountList
 
-    /// Current registration status for display.
+    /// Registration status of the connecting or active account.
     @Published private(set) var registrationStatus: RegistrationStatus = .notConfigured
 
     /// Currently configured accounts.
@@ -102,16 +114,13 @@ final class AppViewModel: ObservableObject {
     /// Whether the account configuration sheet is showing.
     @Published var isAccountSheetPresented = false
 
-    /// Whether the connection progress sheet is showing.
-    @Published var isConnectionSheetPresented = false
-
     /// The account currently being connected.
     @Published private(set) var connectingAccount: SIPAccount?
 
     /// The active (connected) account.
     @Published private(set) var activeAccount: SIPAccount?
 
-    /// Error message to display to user.
+    /// Error to present to the user.
     @Published var errorMessage: String?
 
     // MARK: - Call State
@@ -130,6 +139,18 @@ final class AppViewModel: ObservableObject {
         var ownerAccountID: UUID?
         /// Whether this call has already been recorded in history.
         var historyRecorded: Bool = false
+        /// The user declined this incoming call (not counted as missed).
+        var declinedByUser: Bool = false
+
+        /// Title and subtitle for the remote party, formatted per settings.
+        var labels: (title: String, subtitle: String?) {
+            PhoneNumberService.partyLabels(name: remoteName, uri: remoteURI)
+        }
+
+        var isIncomingRinging: Bool {
+            if case .incoming = state { return true }
+            return false
+        }
     }
 
     /// All active calls tracked by ID.
@@ -158,7 +179,7 @@ final class AppViewModel: ObservableObject {
     /// Remote party URI for the current call.
     @Published private(set) var remotePartyURI: String?
 
-    /// Remote party display name (parsed from URI or provided).
+    /// Remote party display name sent by the other side, if any.
     @Published private(set) var remotePartyName: String?
 
     /// Whether the current call is muted.
@@ -170,17 +191,26 @@ final class AppViewModel: ObservableObject {
     /// Call duration in seconds.
     @Published private(set) var callDuration: TimeInterval = 0
 
-    /// Formatted call duration string (MM:SS or HH:MM:SS).
+    /// Formatted call duration string (M:SS or H:MM:SS).
     var callDurationFormatted: String {
-        let hours = Int(callDuration) / 3600
-        let minutes = (Int(callDuration) % 3600) / 60
-        let seconds = Int(callDuration) % 60
+        Self.formatDuration(callDuration)
+    }
 
+    /// Title and subtitle for the displayed call's remote party.
+    var remotePartyLabels: (title: String, subtitle: String?) {
+        PhoneNumberService.partyLabels(name: remotePartyName, uri: remotePartyURI)
+    }
+
+    /// Formats a duration as M:SS or H:MM:SS.
+    static func formatDuration(_ duration: TimeInterval) -> String {
+        let total = max(0, Int(duration))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
         if hours > 0 {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            return String(format: "%d:%02d", minutes, seconds)
         }
+        return String(format: "%d:%02d", minutes, seconds)
     }
 
     /// Timer for updating call duration.
@@ -192,7 +222,7 @@ final class AppViewModel: ObservableObject {
     /// Pending cleanup work item to prevent stale timers affecting new calls.
     private var pendingCleanupWorkItem: DispatchWorkItem?
 
-    /// Tracked account states by ID.
+    /// Tracked account states by bridge ID.
     private var accountStates: [AccountID: AccountState] = [:]
 
     /// Mapping from SIPAccount UUID to bridge AccountID.
@@ -217,20 +247,24 @@ final class AppViewModel: ObservableObject {
         let callManager = IncomingCallManager.shared
         callManager.requestNotificationPermission()
 
-        callManager.onAnswer = { [weak self] in
-            self?.answerCall()
+        callManager.onAnswer = { [weak self] callID in
+            self?.answerCall(callID)
         }
 
-        callManager.onDecline = { [weak self] in
-            self?.hangupCall()
+        callManager.onDecline = { [weak self] callID in
+            self?.declineCall(callID)
+        }
+
+        callManager.onShowCall = { [weak self] callID in
+            self?.selectCall(callID)
         }
     }
 
     /// Shows the add account sheet if no accounts exist.
     private func showAddAccountIfEmpty() {
         if accounts.isEmpty {
-            // Delay slightly to ensure the UI is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            // Present after the window is on screen so the sheet attaches to it
+            DispatchQueue.main.async { [weak self] in
                 self?.showAddAccountSheet()
             }
         }
@@ -239,42 +273,55 @@ final class AppViewModel: ObservableObject {
     /// Starts the TonePhoneCore SIP engine.
     private func startCore() {
         do {
-            try TonePhoneCore.shared.start()
-            print("AppViewModel: TonePhoneCore started successfully")
+            try TonePhoneCore.shared.start(options: SettingsStore.shared.coreOptions)
+            SettingsStore.shared.applyCoreSettings()
         } catch {
-            print("AppViewModel: Failed to start TonePhoneCore: \(error)")
-            errorMessage = "Failed to initialize SIP engine: \(error.localizedDescription)"
+            errorMessage = "TonePhone couldn’t start the calling engine (\(error.localizedDescription)). Quit and reopen TonePhone; if the problem continues, export the logs from Settings › Advanced."
         }
     }
 
-    /// Subscribes to TonePhoneCore events to track account state changes.
+    /// Subscribes to TonePhoneCore events and system notifications.
     private func subscribeToEvents() {
         TonePhoneCore.shared.events
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 self?.handleEvent(event)
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .accountSettingsChanged)
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
                 guard let self, let accountID = notification.object as? UUID else { return }
                 self.reregisterAccount(id: accountID)
+            }
+            .store(in: &cancellables)
+
+        // Network addresses change across sleep; refresh the registration on wake
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in
+                self?.refreshRegistrationAfterWake()
             }
             .store(in: &cancellables)
     }
 
     /// Re-registers an account after its settings changed.
     private func reregisterAccount(id: UUID) {
-        // Skip re-registration if this account is currently in the connecting flow
-        // to avoid disrupting the in-flight connection with stale bridge IDs.
-        if connectingAccount?.id == id { return }
-
         loadAccounts()
+
+        // Only the account in use is registered with the engine
         guard let account = accounts.first(where: { $0.id == id }),
+              account.id == activeAccount?.id || account.id == connectingAccount?.id,
               let password = AccountStore.shared.getPassword(for: id) else { return }
+
+        if activeAccount?.id == id { activeAccount = account }
+        if connectingAccount?.id == id { connectingAccount = account }
         registerAccountWithCore(account, password: password)
+    }
+
+    /// Sends a fresh REGISTER for the active account after the Mac wakes.
+    private func refreshRegistrationAfterWake() {
+        guard let account = activeAccount ?? connectingAccount,
+              let bridgeID = accountIDMapping[account.id] else { return }
+        try? TonePhoneCore.shared.registerAccount(bridgeID)
     }
 
     /// Handles incoming events from TonePhoneCore.
@@ -282,65 +329,65 @@ final class AppViewModel: ObservableObject {
     private func handleEvent(_ event: TonePhoneEvent) {
         switch event {
         case .accountStateChanged(let accountID, let state):
+            // Ignore late events from accounts that were removed
+            guard accountIDMapping.values.contains(accountID) else { return }
             accountStates[accountID] = state
             updateRegistrationStatus()
 
             // Handle connection completion - only for the account we're connecting
             if let connectingAccount,
-               let connectingBridgeID = accountIDMapping[connectingAccount.id],
-               connectingBridgeID == accountID {
+               accountIDMapping[connectingAccount.id] == accountID {
                 switch state {
                 case .registered:
-                    // Auto-complete connection when registered
-                    if isConnectionSheetPresented {
-                        completeConnection()
-                    } else if currentScreen == .connecting {
-                        // Auto-login flow: transition directly to active account
-                        completeConnection()
-                    }
-                case .failed(let reason):
+                    completeConnection()
+                case .failed:
                     // Auto-login failed: go to account list and show error
                     if currentScreen == .connecting {
-                        let accountName = connectingAccount.displayName.isEmpty == false
-                            ? connectingAccount.displayName
-                            : connectingAccount.username
-                        errorMessage = "Failed to connect to \(accountName): \(reason ?? "Connection failed")"
+                        errorMessage = "Couldn’t connect to \(connectingAccount.title). \(registrationStatus.displayText)"
+                        removeAccountFromCore(connectingAccount.id)
                         self.connectingAccount = nil
                         currentScreen = .accountList
+                        updateRegistrationStatus()
                     }
                 default:
                     break
                 }
             }
 
-        case .callStateChanged(let callID, let state):
-            handleCallStateChanged(callID: callID, state: state)
+        case .callStateChanged(let callID, let state, let details):
+            handleCallStateChanged(callID: callID, state: state, details: details)
 
         case .audioDeviceChanged:
             handleAudioDeviceChanged()
 
         case .coreStateChanged, .mediaChanged:
-            // Handled elsewhere or not needed for registration status
             break
         }
     }
 
+    /// Maps a bridge account ID back to the stored account.
+    private func account(forBridgeID bridgeID: AccountID) -> SIPAccount? {
+        guard let uuid = accountIDMapping.first(where: { $0.value == bridgeID })?.key else { return nil }
+        return accounts.first { $0.id == uuid }
+    }
+
     /// Handles call state changes from TonePhoneCore.
-    private func handleCallStateChanged(callID: CallID, state: CallState) {
-        // Update call in activeCalls dictionary
+    private func handleCallStateChanged(callID: CallID, state: CallState, details: CallEventDetails) {
         var callInfo = activeCalls[callID] ?? CallInfo(id: callID, state: .idle)
+        if let name = details.remoteName {
+            callInfo.remoteName = name
+        }
+        if callInfo.ownerAccountID == nil {
+            callInfo.ownerAccountID = account(forBridgeID: details.accountID)?.id ?? activeAccount?.id
+        }
 
         switch state {
         case .idle:
-            // Record in call history if not already recorded via .ended
             if callInfo.remoteURI != nil {
                 recordCallHistory(callInfo)
             }
-            // Remove from active calls
             activeCalls.removeValue(forKey: callID)
-            // Ensure ringtone and notification are stopped
-            IncomingCallManager.shared.handleCallEnded()
-            // If this was the displayed call, switch to another or clear
+            IncomingCallManager.shared.handleCallEnded(callID)
             if activeCallID == callID {
                 switchToNextCallOrClear()
             }
@@ -348,32 +395,29 @@ final class AppViewModel: ObservableObject {
         case .outgoing:
             callInfo.state = .outgoing
             callInfo.isOutgoing = true
-            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
-            // Make this the displayed call
-            activeCallID = callID
-            remotePartyURI = callInfo.remoteURI
-            remotePartyName = callInfo.remoteName
-            callState = .outgoing
-            currentScreen = .activeCall
+            if activeCallID == nil || activeCallID == callID {
+                showCall(callInfo)
+            }
 
         case .incoming(let remoteURI):
             callInfo.state = .incoming(remoteURI: remoteURI)
             callInfo.remoteURI = remoteURI
-            callInfo.remoteName = parseDisplayName(from: remoteURI)
-            callInfo.ownerAccountID = activeAccount?.id
             activeCalls[callID] = callInfo
-            // Make this the displayed call
-            activeCallID = callID
-            remotePartyURI = remoteURI
-            remotePartyName = callInfo.remoteName
-            callState = .incoming(remoteURI: remoteURI)
-            currentScreen = .activeCall
 
-            // Trigger incoming call alert (ringtone, notification, bring to front)
+            // Show the incoming call unless the user is already talking;
+            // a second call rings in the panel and the calls list (call waiting)
+            let isBusy = activeCalls.values.contains { $0.id != callID && $0.state == .established }
+            if !isBusy {
+                showCall(callInfo)
+            }
+
+            let labels = callInfo.labels
             IncomingCallManager.shared.handleIncomingCall(
-                callerName: remotePartyName,
-                callerURI: remoteURI
+                callID: callID,
+                title: labels.title,
+                subtitle: labels.subtitle,
+                accountName: callInfo.ownerAccountID.flatMap { id in accounts.first { $0.id == id }?.title }
             )
 
         case .early:
@@ -390,13 +434,12 @@ final class AppViewModel: ObservableObject {
                 callInfo.startTime = Date()
             }
             activeCalls[callID] = callInfo
+            IncomingCallManager.shared.handleCallAnswered(callID)
             if activeCallID == callID {
                 callState = .established
                 isOnHold = false
-                startCallDurationTimer()
+                startCallDurationTimer(from: callInfo.startTime)
             }
-            // Stop ringtone when call is answered
-            IncomingCallManager.shared.handleCallEnded()
 
         case .held:
             callInfo.state = .held
@@ -409,12 +452,10 @@ final class AppViewModel: ObservableObject {
 
         case .ended(let reason):
             callInfo.state = .ended(reason: reason)
-            // Record in call history
             recordCallHistory(callInfo)
             callInfo.historyRecorded = true
             activeCalls[callID] = callInfo
-            // Stop ringtone and remove notification
-            IncomingCallManager.shared.handleCallEnded()
+            IncomingCallManager.shared.handleCallEnded(callID)
             if activeCallID == callID {
                 callState = .ended(reason: reason)
                 stopCallDurationTimer()
@@ -423,36 +464,41 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Makes a call the displayed call and switches to the call screen.
+    private func showCall(_ callInfo: CallInfo) {
+        cancelPendingCleanup()
+        activeCallID = callInfo.id
+        remotePartyURI = callInfo.remoteURI
+        remotePartyName = callInfo.remoteName
+        callState = callInfo.state
+        isMuted = callInfo.isMuted
+        isOnHold = callInfo.isOnHold
+        if callInfo.startTime != nil {
+            startCallDurationTimer(from: callInfo.startTime)
+        } else {
+            stopCallDurationTimer()
+            callDuration = 0
+        }
+        currentScreen = .activeCall
+    }
+
     /// Switches to the next available call or clears call state if none.
     private func switchToNextCallOrClear() {
-        // Find another call to display (prefer established, then held, then any)
-        let nextCall = activeCalls.values.first { call in
-            if case .established = call.state { return true }
-            return false
-        } ?? activeCalls.values.first { call in
-            if case .held = call.state { return true }
-            return false
-        } ?? activeCalls.values.first { call in
-            if case .incoming = call.state { return true }
-            return false
+        // Prefer a ringing call, then a connected one, then a held one
+        let remaining = activeCalls.values.filter {
+            if case .ended = $0.state { return false }
+            return true
         }
+        let nextCall = remaining.first { $0.isIncomingRinging }
+            ?? remaining.first { $0.state == .established }
+            ?? remaining.first { $0.state == .held }
+            ?? remaining.first
 
-        if let nextCall = nextCall {
-            // Switch to this call
-            activeCallID = nextCall.id
-            remotePartyURI = nextCall.remoteURI
-            remotePartyName = nextCall.remoteName
-            callState = nextCall.state
-            isMuted = nextCall.isMuted
-            isOnHold = nextCall.isOnHold
+        if let nextCall {
+            showCall(nextCall)
         } else {
-            // No more calls, clear state
             clearCallState()
-            if activeAccount != nil {
-                currentScreen = .activeAccount
-            } else {
-                currentScreen = .accountList
-            }
+            currentScreen = activeAccount != nil ? .activeAccount : .accountList
         }
     }
 
@@ -470,30 +516,19 @@ final class AppViewModel: ObservableObject {
         cancelPendingCleanup()
     }
 
-    /// Schedules cleanup after call ends.
-    /// - Parameters:
-    ///   - callID: The call ID that ended
-    ///   - delay: Delay before cleanup runs
+    /// Schedules removal of an ended call so its final state stays visible briefly.
     private func scheduleCallCleanup(callID: CallID, delay: TimeInterval = 1.0) {
-        // Cancel any existing cleanup first
         cancelPendingCleanup()
 
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-
-            // Clear the reference to avoid stale state
+            guard let self else { return }
             self.pendingCleanupWorkItem = nil
-
-            // Remove the ended call from tracking
             self.activeCalls.removeValue(forKey: callID)
-
-            // If this was the displayed call, switch to another or clear
             if self.activeCallID == callID {
                 self.switchToNextCallOrClear()
             }
         }
 
-        // Store reference so it can be cancelled
         pendingCleanupWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
@@ -502,27 +537,6 @@ final class AppViewModel: ObservableObject {
     private func cancelPendingCleanup() {
         pendingCleanupWorkItem?.cancel()
         pendingCleanupWorkItem = nil
-    }
-
-    /// Parses a display name from a SIP URI.
-    private func parseDisplayName(from uri: String?) -> String? {
-        guard let uri = uri else { return nil }
-
-        // Try to extract display name from "Display Name" <sip:user@domain> format
-        if let range = uri.range(of: "\"([^\"]+)\"", options: .regularExpression) {
-            return String(uri[range]).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-        }
-
-        // Extract user part from sip:user@domain
-        if uri.hasPrefix("sip:") {
-            let withoutScheme = String(uri.dropFirst(4))
-            if let atIndex = withoutScheme.firstIndex(of: "@") {
-                return String(withoutScheme[..<atIndex])
-            }
-            return withoutScheme
-        }
-
-        return uri
     }
 
     /// Records a completed call in the call history.
@@ -539,34 +553,12 @@ final class AppViewModel: ObservableObject {
             direction = .missed
         }
 
-        let duration: TimeInterval
-        if let start = callInfo.startTime {
-            duration = Date().timeIntervalSince(start)
-        } else {
-            duration = 0
-        }
-
-        // Extract a clean user@domain from the raw remote URI
-        let rawURI = callInfo.remoteURI ?? "Unknown"
-        let dialableURI: String
-        var extracted = rawURI
-        // Handle "Display Name" <sip:user@domain> format
-        if let angleBracketStart = rawURI.firstIndex(of: "<"),
-           let angleBracketEnd = rawURI.firstIndex(of: ">") {
-            extracted = String(rawURI[rawURI.index(after: angleBracketStart)..<angleBracketEnd])
-        }
-        // Strip sip:/sips: scheme for consistent user@domain format
-        if extracted.lowercased().hasPrefix("sips:") {
-            dialableURI = String(extracted.dropFirst(5))
-        } else if extracted.lowercased().hasPrefix("sip:") {
-            dialableURI = String(extracted.dropFirst(4))
-        } else {
-            dialableURI = extracted
-        }
+        let duration = callInfo.startTime.map { Date().timeIntervalSince($0) } ?? 0
+        let remoteAddress = PhoneNumberService.address(ofURI: callInfo.remoteURI ?? "")
 
         let record = CallRecord(
             accountID: accountID,
-            remoteURI: dialableURI,
+            remoteURI: remoteAddress.isEmpty ? "Unknown" : remoteAddress,
             remoteName: callInfo.remoteName,
             direction: direction,
             duration: duration
@@ -574,19 +566,26 @@ final class AppViewModel: ObservableObject {
 
         CallHistoryStore.shared.addRecord(record)
         NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
+
+        if direction == .missed && !callInfo.declinedByUser {
+            IncomingCallManager.shared.postMissedCallNotification(title: callInfo.labels.title)
+        }
     }
 
     /// Starts the call duration timer.
-    private func startCallDurationTimer() {
-        callStartTime = Date()
-        callDuration = 0
+    private func startCallDurationTimer(from start: Date?) {
+        callStartTime = start ?? Date()
+        callDuration = Date().timeIntervalSince(callStartTime ?? Date())
         callDurationTimer?.invalidate()
-        callDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self, let startTime = self.callStartTime else { return }
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let startTime = self.callStartTime else { return }
                 self.callDuration = Date().timeIntervalSince(startTime)
             }
         }
+        // .common keeps the timer running while menus or popovers track events
+        RunLoop.main.add(timer, forMode: .common)
+        callDurationTimer = timer
     }
 
     /// Stops the call duration timer.
@@ -595,50 +594,69 @@ final class AppViewModel: ObservableObject {
         callDurationTimer = nil
     }
 
-    /// Recalculates the aggregated registration status from all account states.
-    ///
-    /// Priority order:
-    /// 1. If any account is registered → `.registered`
-    /// 2. If any account is registering → `.registering`
-    /// 3. If any account failed → `.failed` with first error reason
-    /// 4. Otherwise → `.notConfigured`
+    /// Recalculates the registration status of the connecting or active account.
     private func updateRegistrationStatus() {
-        // If no accounts, show not configured
-        guard !accountStates.isEmpty else {
+        guard !accounts.isEmpty else {
             registrationStatus = .notConfigured
             return
         }
 
-        var hasRegistered = false
-        var hasRegistering = false
-        var firstFailureReason: String?
+        guard let account = connectingAccount ?? activeAccount,
+              let bridgeID = accountIDMapping[account.id],
+              let state = accountStates[bridgeID] else {
+            registrationStatus = .offline
+            return
+        }
 
-        for (_, state) in accountStates {
-            switch state {
-            case .registered:
-                hasRegistered = true
-            case .registering:
-                hasRegistering = true
-            case .failed(let reason):
-                if firstFailureReason == nil {
-                    firstFailureReason = reason
-                }
-            case .unregistered:
-                break
+        switch state {
+        case .registered:
+            registrationStatus = .registered
+        case .registering:
+            registrationStatus = .registering
+        case .unregistered:
+            registrationStatus = .offline
+        case .failed(let reason):
+            registrationStatus = .failed(reason: Self.friendlyRegistrationError(reason, account: account))
+        }
+    }
+
+    /// Turns a SIP or socket error into a sentence that says what to check.
+    static func friendlyRegistrationError(_ reason: String?, account: SIPAccount) -> String {
+        let raw = (reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = raw.lowercased()
+        let code = Int(raw.prefix(3))
+
+        let message: String
+        switch code {
+        case 401, 407:
+            message = "The username or password is incorrect."
+        case 403:
+            message = "The server refused this account. Check the username, password and authentication username."
+        case 404:
+            message = "The server doesn’t know this account. Check the username and domain."
+        case 408, 480, 503, 504:
+            message = "The server didn’t respond. Check the server address, port and transport."
+        case 423:
+            message = "The server requires a different registration interval."
+        default:
+            if lowered.contains("timed out") || lowered.contains("timeout") {
+                message = "The server didn’t respond. Check the server address, port and transport (\(account.transport.displayName))."
+            } else if lowered.contains("refused") {
+                message = "The server refused the connection. Check the port and transport (\(account.transport.displayName))."
+            } else if lowered.contains("certificate") || lowered.contains("tls") || lowered.contains("ssl") {
+                message = "A secure connection couldn’t be established. Check the server’s certificate, or turn off certificate verification in Settings › Advanced."
+            } else if lowered.contains("resolve") || lowered.contains("dns") || lowered.contains("no such") || lowered.contains("not known") {
+                message = "The server address couldn’t be found. Check the domain name."
+            } else if lowered.contains("unreachable") || lowered.contains("no route") || lowered.contains("network is down") {
+                message = "The network is unavailable. Check your internet connection."
+            } else if raw.isEmpty {
+                message = "Registration failed."
+            } else {
+                message = "Registration failed."
             }
         }
 
-        if hasRegistered {
-            registrationStatus = .registered
-        } else if hasRegistering {
-            registrationStatus = .registering
-        } else if let reason = firstFailureReason {
-            registrationStatus = .failed(reason: reason)
-        } else if accountStates.values.contains(where: { if case .failed = $0 { return true } else { return false } }) {
-            registrationStatus = .failed(reason: nil)
-        } else {
-            registrationStatus = .notConfigured
-        }
+        return raw.isEmpty ? message : "\(message) (\(raw))"
     }
 
     // MARK: - Account Management
@@ -651,25 +669,22 @@ final class AppViewModel: ObservableObject {
 
     /// Auto-connects to an account if autoLogin is enabled.
     private func autoConnectIfNeeded() {
-        // Find account with autoLogin enabled
-        guard let autoLoginAccount = accounts.first(where: { $0.autoLogin }) else {
+        guard SettingsStore.shared.registerOnStartup,
+              let autoLoginAccount = accounts.first(where: { $0.autoLogin }) else {
+            updateRegistrationStatus()
             return
         }
 
-        // Show connecting screen and start registration
-        print("AppViewModel: Auto-connecting to \(autoLoginAccount.server)")
         connectingAccount = autoLoginAccount
         currentScreen = .connecting
 
-        // Start registration
         if let password = AccountStore.shared.getPassword(for: autoLoginAccount.id) {
             registerAccountWithCore(autoLoginAccount, password: password)
         } else {
-            // Password missing - show error and go to account list
-            let accountName = autoLoginAccount.displayName.isEmpty ? autoLoginAccount.username : autoLoginAccount.displayName
-            errorMessage = "Password missing for \(accountName). Please edit the account."
+            errorMessage = "The password for \(autoLoginAccount.title) is missing. Edit the account to enter it again."
             connectingAccount = nil
             currentScreen = .accountList
+            updateRegistrationStatus()
         }
     }
 
@@ -686,159 +701,135 @@ final class AppViewModel: ObservableObject {
         isAccountSheetPresented = true
     }
 
-    /// Saves an account and triggers registration.
-    /// - Parameters:
-    ///   - account: The account configuration to save.
-    ///   - password: The account password.
+    /// Saves an account. A new account connects right away; an edited
+    /// account reconnects only if it is in use.
     func saveAccount(_ account: SIPAccount, password: String) {
-        // Save to persistent storage
+        let isNew = !accounts.contains { $0.id == account.id }
+
         AccountStore.shared.saveAccount(account)
         AccountStore.shared.savePassword(password, for: account.id)
-
-        // Reload accounts list
         loadAccounts()
 
-        // Register with TonePhoneCore
-        registerAccountWithCore(account, password: password)
+        if isNew {
+            startConnection(for: account)
+        } else if account.id == activeAccount?.id || account.id == connectingAccount?.id {
+            reregisterAccount(id: account.id)
+        }
     }
 
     /// Deletes an account.
-    /// - Parameter accountID: The UUID of the account to delete.
+    /// - Parameter id: The UUID of the account to delete.
     func deleteAccount(id: UUID) {
-        // Unregister from core if registered
-        if let bridgeID = accountIDMapping[id] {
-            do {
-                try TonePhoneCore.shared.removeAccount(bridgeID)
-            } catch {
-                errorMessage = "Failed to remove account: \(error.localizedDescription)"
-                print("Failed to remove account from core: \(error)")
-                return
-            }
-            accountIDMapping.removeValue(forKey: id)
-            accountStates.removeValue(forKey: bridgeID)
+        if activeAccount?.id == id {
+            disconnect()
         }
+        if connectingAccount?.id == id {
+            cancelConnection()
+        }
+        removeAccountFromCore(id)
 
-        // Remove from persistent storage
         AccountStore.shared.deleteAccount(id: id)
-
-        // Reload accounts list
         loadAccounts()
     }
 
-    /// Registers an account with TonePhoneCore.
-    /// - Parameters:
-    ///   - account: The account to register.
-    ///   - password: The account password.
-    private func registerAccountWithCore(_ account: SIPAccount, password: String) {
-        // Remove existing registration if present
-        if let existingBridgeID = accountIDMapping[account.id] {
-            do {
-                try TonePhoneCore.shared.removeAccount(existingBridgeID)
-                accountStates.removeValue(forKey: existingBridgeID)
-                accountIDMapping.removeValue(forKey: account.id)
-            } catch {
-                errorMessage = "Failed to update account: \(error.localizedDescription)"
-                print("Failed to remove existing account: \(error)")
-                return
-            }
-        }
+    /// Removes an account's user agent from the engine (unregisters it).
+    private func removeAccountFromCore(_ id: UUID) {
+        guard let bridgeID = accountIDMapping.removeValue(forKey: id) else { return }
+        accountStates.removeValue(forKey: bridgeID)
+        try? TonePhoneCore.shared.removeAccount(bridgeID)
+    }
 
-        // Resolve per-account overrides, falling back to global settings
+    /// Builds the engine configuration for an account, applying global defaults.
+    private func configuration(for account: SIPAccount, password: String) -> AccountConfiguration {
         let settings = SettingsStore.shared
-        let resolvedStunServer = account.stunServerOverride ?? settings.stunServer
-        let resolvedNatMethod = account.natMethodOverride ?? settings.natMethod
-        // Note: dtmfModeOverride is stored per-account but not yet applied here
-        // because the bridge addAccount API has no DTMF mode parameter.
-        // DTMF mode is currently a global setting applied at the core level.
+        let stunServer = account.stunServerOverride ?? settings.stunServers.first ?? settings.stunServer
+        let natMethod = account.natMethodOverride ?? settings.natMethod
+        let dtmfMode = account.dtmfModeOverride ?? settings.dtmfMode
 
-        let stunServer = resolvedStunServer.isEmpty ? nil : resolvedStunServer
-        let medianat = resolvedNatMethod == .none ? nil : resolvedNatMethod.rawValue
-        let natPinhole: Bool? = account.natPinholeOverride
+        return AccountConfiguration(
+            sipURI: account.sipURI,
+            password: password,
+            displayName: account.displayName.isEmpty ? nil : account.displayName,
+            authUsername: account.authUsername.trimmingCharacters(in: .whitespaces),
+            outboundProxy: account.outboundProxyURI,
+            transport: account.transport.rawValue,
+            stunServer: natMethod == .none || stunServer.isEmpty ? nil : stunServer,
+            mediaNAT: natMethod == .none ? nil : natMethod.rawValue,
+            mediaEncryption: account.mediaEncryption.engineValue,
+            dtmfMode: dtmfMode.engineValue,
+            registrationInterval: UInt32(max(60, account.registrationInterval)),
+            natPinhole: account.natPinholeOverride ?? settings.natPinhole,
+            registerImmediately: true
+        )
+    }
 
-        // Add new account to core
+    /// Creates the account in the engine (replacing any previous instance) and registers it.
+    private func registerAccountWithCore(_ account: SIPAccount, password: String) {
+        removeAccountFromCore(account.id)
+
         do {
-            let bridgeID = try TonePhoneCore.shared.addAccount(
-                sipURI: account.sipURI,
-                password: password,
-                displayName: account.displayName.isEmpty ? nil : account.displayName,
-                transport: account.transport.rawValue,
-                stunServer: stunServer,
-                medianat: medianat,
-                natPinhole: natPinhole,
-                registerImmediately: true
-            )
+            let bridgeID = try TonePhoneCore.shared.addAccount(configuration(for: account, password: password))
             accountIDMapping[account.id] = bridgeID
+            // Events arrive asynchronously; start in the registering state
             accountStates[bridgeID] = .registering
             updateRegistrationStatus()
         } catch {
-            errorMessage = "Failed to register account: \(error.localizedDescription)"
-            print("Failed to add account to core: \(error)")
-        }
-    }
-
-    /// Registers stored accounts that have passwords with TonePhoneCore.
-    /// Available for batch registration if needed (e.g., after core restart).
-    /// Note: Not called at startup; the app uses lazy registration via `startConnection`.
-    /// Accounts without stored passwords are skipped.
-    func registerStoredAccounts() {
-        for account in accounts {
-            if let password = AccountStore.shared.getPassword(for: account.id) {
-                registerAccountWithCore(account, password: password)
+            let message = error as? TonePhoneError == .invalidArgument
+                ? "The account settings aren’t valid. Check the server address, port and username."
+                : error.localizedDescription
+            if connectingAccount?.id == account.id {
+                registrationStatus = .failed(reason: message)
+                if currentScreen == .connecting {
+                    errorMessage = "Couldn’t connect to \(account.title). \(message)"
+                    connectingAccount = nil
+                    currentScreen = .accountList
+                }
+            } else {
+                errorMessage = message
             }
         }
     }
 
     // MARK: - Connection Flow
 
-    /// Starts the connection process for an account.
+    /// Connects to an account, disconnecting the current one first.
     /// Shows the connection progress sheet.
     func startConnection(for account: SIPAccount) {
-        connectingAccount = account
-        isConnectionSheetPresented = true
-
-        // Start registration
-        if let password = AccountStore.shared.getPassword(for: account.id) {
-            registerAccountWithCore(account, password: password)
-        } else {
-            // Password missing - show error and close sheet
-            let accountName = account.displayName.isEmpty ? account.username : account.displayName
-            errorMessage = "Password missing for \(accountName). Please edit the account."
-            connectingAccount = nil
-            isConnectionSheetPresented = false
-            updateRegistrationStatus()
+        guard let password = AccountStore.shared.getPassword(for: account.id) else {
+            errorMessage = "The password for \(account.title) is missing. Edit the account to enter it again."
+            return
         }
+
+        // Switching accounts: only one account is registered at a time
+        if let previous = connectingAccount, previous.id != account.id {
+            removeAccountFromCore(previous.id)
+        }
+        if let current = activeAccount, current.id != account.id {
+            guard activeCalls.isEmpty else {
+                errorMessage = "End your current calls before switching accounts."
+                return
+            }
+            removeAccountFromCore(current.id)
+            activeAccount = nil
+        }
+
+        connectingAccount = account
+        registerAccountWithCore(account, password: password)
     }
 
     /// Cancels the current connection attempt.
     func cancelConnection() {
-        if let account = connectingAccount, let bridgeID = accountIDMapping[account.id] {
-            do {
-                try TonePhoneCore.shared.unregisterAccount(bridgeID)
-            } catch {
-                // Ignore errors when canceling
-            }
-            accountStates[bridgeID] = .unregistered
+        if let account = connectingAccount {
+            removeAccountFromCore(account.id)
         }
-
         connectingAccount = nil
-        isConnectionSheetPresented = false
         updateRegistrationStatus()
     }
 
     /// Cancels auto-connect and goes to account list.
     func cancelAutoConnect() {
-        if let account = connectingAccount, let bridgeID = accountIDMapping[account.id] {
-            do {
-                try TonePhoneCore.shared.unregisterAccount(bridgeID)
-            } catch {
-                // Ignore errors when canceling
-            }
-            accountStates[bridgeID] = .unregistered
-        }
-
-        connectingAccount = nil
+        cancelConnection()
         currentScreen = .accountList
-        updateRegistrationStatus()
     }
 
     /// Retries the connection for the current account.
@@ -848,284 +839,281 @@ final class AppViewModel: ObservableObject {
         if let password = AccountStore.shared.getPassword(for: account.id) {
             registerAccountWithCore(account, password: password)
         } else {
-            errorMessage = "Password missing for \(account.username). Please edit the account."
+            errorMessage = "The password for \(account.title) is missing. Edit the account to enter it again."
         }
     }
 
     /// Opens the account editor for the connecting account.
     func editConnectingAccount() {
         guard let account = connectingAccount else { return }
-
-        // Close connection sheet and open edit sheet
-        isConnectionSheetPresented = false
-        connectingAccount = nil
+        cancelConnection()
         showEditAccountSheet(for: account)
     }
 
     /// Completes the connection and transitions to active account screen.
     func completeConnection() {
-        activeAccount = connectingAccount
+        guard let account = connectingAccount else { return }
+        activeAccount = account
         connectingAccount = nil
-        isConnectionSheetPresented = false
-        currentScreen = .activeAccount
+        if let bridgeID = accountIDMapping[account.id] {
+            // Outgoing calls use the engine's default account
+            try? TonePhoneCore.shared.setDefaultAccount(bridgeID)
+        }
+        currentScreen = activeCalls.isEmpty ? .activeAccount : .activeCall
+        updateRegistrationStatus()
     }
 
-    /// Unregisters the active account and returns to account list.
-    func unregisterAndGoBack() {
-        if let account = activeAccount, let bridgeID = accountIDMapping[account.id] {
-            do {
-                try TonePhoneCore.shared.unregisterAccount(bridgeID)
-            } catch {
-                errorMessage = "Failed to unregister: \(error.localizedDescription)"
-            }
-            accountStates[bridgeID] = .unregistered
+    /// Disconnects the active account and returns to the account list.
+    func disconnect() {
+        for callID in activeCalls.keys {
+            try? TonePhoneCore.shared.hangupCall(callID)
+        }
+        if let account = activeAccount {
+            removeAccountFromCore(account.id)
         }
 
         activeAccount = nil
+        clearCallState()
+        activeCalls.removeAll()
         currentScreen = .accountList
         updateRegistrationStatus()
     }
 
     // MARK: - Call Control
 
-    /// Puts all active (non-held, established) calls on hold.
-    /// Call this before making or answering a new call.
-    private func holdAllActiveCalls() {
-        print("AppViewModel: holdAllActiveCalls called, activeCalls count: \(activeCalls.count)")
-        // Iterate over a snapshot to avoid mutating while iterating
-        let callsSnapshot = activeCalls
-        for (callID, callInfo) in callsSnapshot {
-            print("AppViewModel: Checking call \(callID), state: \(callInfo.state), isOnHold: \(callInfo.isOnHold)")
-            // Only hold calls that are established and not already on hold
-            if case .established = callInfo.state, !callInfo.isOnHold {
-                do {
-                    try TonePhoneCore.shared.holdCall(callID, hold: true)
-                    var updatedInfo = callInfo
-                    updatedInfo.isOnHold = true
-                    updatedInfo.state = .held
-                    activeCalls[callID] = updatedInfo
-                    print("AppViewModel: Put call \(callID) on hold")
-                } catch {
-                    print("AppViewModel: Failed to hold call \(callID): \(error)")
-                }
+    /// Puts all active (non-held, established) calls on hold, except one.
+    private func holdAllActiveCalls(except keep: CallID? = nil) {
+        for (callID, callInfo) in activeCalls where callID != keep {
+            guard case .established = callInfo.state, !callInfo.isOnHold else { continue }
+            do {
+                try TonePhoneCore.shared.holdCall(callID, hold: true)
+                var updatedInfo = callInfo
+                updatedInfo.isOnHold = true
+                updatedInfo.state = .held
+                activeCalls[callID] = updatedInfo
+            } catch {
+                // The call may have ended in the meantime; nothing to hold
             }
         }
     }
 
     // MARK: - Microphone Permission
 
-    /// Checks if microphone access is authorized.
-    private func checkMicrophonePermission() -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            return true
-        case .notDetermined, .denied, .restricted:
-            return false
-        @unknown default:
-            return false
-        }
-    }
-
     /// Requests microphone permission and calls completion with result.
-    private func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
+    private func requestMicrophonePermission(completion: @escaping @MainActor (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             completion(true)
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
-                    completion(granted)
+                    MainActor.assumeIsolated { completion(granted) }
                 }
             }
-        case .denied, .restricted:
-            completion(false)
-        @unknown default:
+        default:
             completion(false)
         }
     }
 
     /// Shows an error message about microphone permission.
     private func showMicrophonePermissionError() {
-        errorMessage = "Microphone access is required for calls. Please enable it in System Settings > Privacy & Security > Microphone."
+        errorMessage = "TonePhone needs access to the microphone for calls. Turn it on in System Settings › Privacy & Security › Microphone."
+    }
+
+    /// Builds a SIP URI for what the user dialed, using the active account.
+    ///
+    /// Phone numbers are converted to the account's dial format; SIP
+    /// addresses, usernames and extensions pass through unchanged.
+    func dialURI(for input: String) -> String? {
+        let cleaned = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+
+        let lowered = cleaned.lowercased()
+        if lowered.hasPrefix("sip:") || lowered.hasPrefix("sips:") {
+            return cleaned.filter { !$0.isWhitespace }
+        }
+        if cleaned.contains("@") {
+            return "sip:\(cleaned.filter { !$0.isWhitespace })"
+        }
+
+        let user: String
+        if PhoneNumberService.looksLikeAddress(cleaned) {
+            user = cleaned.filter { !$0.isWhitespace }
+        } else {
+            user = PhoneNumberService.dialString(for: cleaned, format: activeAccount?.dialFormatOverride)
+        }
+        guard !user.isEmpty else { return nil }
+
+        let escaped = SIPAccount.escapeUserPart(user)
+        guard let account = activeAccount else { return "sip:\(escaped)" }
+        return "sip:\(escaped)@\(account.hostPort)"
+    }
+
+    /// Dials a number, username or SIP address.
+    func dial(_ input: String) {
+        guard let uri = dialURI(for: input) else { return }
+        makeCall(to: uri)
     }
 
     /// Makes an outgoing call to the specified URI.
     /// - Parameter uri: The SIP URI to call.
     func makeCall(to uri: String) {
-        // Check microphone permission first
         requestMicrophonePermission { [weak self] granted in
-            guard let self = self else { return }
+            guard let self else { return }
 
-            if !granted {
+            guard granted else {
                 self.showMicrophonePermissionError()
                 return
             }
 
-            // Cancel any pending cleanup from a previous call
             self.cancelPendingCleanup()
-
-            // Put any active calls on hold first
             self.holdAllActiveCalls()
+
+            // Calls go out through the engine's default account; make sure
+            // it is the one on screen
+            if let account = self.activeAccount, let bridgeID = self.accountIDMapping[account.id] {
+                try? TonePhoneCore.shared.setDefaultAccount(bridgeID)
+            }
 
             do {
                 let callID = try TonePhoneCore.shared.makeCall(to: uri)
 
-                // Track the new call
-                let callInfo = CallInfo(
-                    id: callID,
-                    state: .outgoing,
-                    remoteURI: uri,
-                    remoteName: self.parseDisplayName(from: uri),
-                    isOutgoing: true,
-                    ownerAccountID: self.activeAccount?.id
-                )
+                // The OUTGOING event may already have created the entry
+                var callInfo = self.activeCalls[callID] ?? CallInfo(id: callID, state: .outgoing)
+                callInfo.remoteURI = uri
+                callInfo.isOutgoing = true
+                callInfo.ownerAccountID = callInfo.ownerAccountID ?? self.activeAccount?.id
+                if callInfo.state == .idle { callInfo.state = .outgoing }
                 self.activeCalls[callID] = callInfo
-
-                // Make this the active/displayed call
-                self.activeCallID = callID
-                self.remotePartyURI = uri
-                self.remotePartyName = callInfo.remoteName
-                self.callState = .outgoing
-                self.isMuted = false
-                self.isOnHold = false
-                self.currentScreen = .activeCall
+                self.showCall(callInfo)
             } catch {
-                self.errorMessage = "Failed to start call: \(error.localizedDescription)"
-                print("AppViewModel: Failed to make call: \(error)")
+                self.errorMessage = "The call couldn’t be started. Check the number or address and your connection."
             }
         }
     }
 
-    /// Answers an incoming call.
+    /// Answers the displayed incoming call.
     func answerCall() {
-        guard let callID = activeCallID else {
-            print("AppViewModel: No active call to answer")
-            return
-        }
+        guard let callID = activeCallID else { return }
+        answerCall(callID)
+    }
 
-        print("AppViewModel: answerCall started for call \(callID)")
+    /// Answers an incoming call, holding any other connected call.
+    func answerCall(_ callID: CallID) {
+        guard let callInfo = activeCalls[callID], callInfo.isIncomingRinging else { return }
 
-        // Check microphone permission first
         requestMicrophonePermission { [weak self] granted in
-            guard let self = self else { return }
+            guard let self else { return }
 
-            if !granted {
+            guard granted else {
                 self.showMicrophonePermissionError()
                 return
             }
 
-            print("AppViewModel: Microphone permission granted, about to hold other calls")
+            self.holdAllActiveCalls(except: callID)
 
-            // Put any active calls on hold first (only holds already-established calls)
-            self.holdAllActiveCalls()
+            // Stop the ringtone before answering to release the audio device
+            IncomingCallManager.shared.handleCallAnswered(callID)
 
-            // Stop ringtone BEFORE answering to release audio device
-            IncomingCallManager.shared.handleCallEnded()
-
-            print("AppViewModel: Now answering call \(callID)")
             do {
                 try TonePhoneCore.shared.answerCall(callID)
-                print("AppViewModel: answerCall succeeded for call \(callID)")
+                if let info = self.activeCalls[callID] {
+                    self.showCall(info)
+                }
             } catch {
-                self.errorMessage = "Failed to answer call: \(error.localizedDescription)"
-                print("AppViewModel: Failed to answer call: \(error)")
+                self.errorMessage = "The call couldn’t be answered. The caller may have hung up."
             }
         }
     }
 
-    /// Hangs up the current call.
-    func hangupCall() {
-        guard let callID = activeCallID else {
-            print("AppViewModel: No active call to hang up")
-            return
+    /// Declines an incoming call.
+    func declineCall(_ callID: CallID) {
+        if var callInfo = activeCalls[callID] {
+            callInfo.declinedByUser = true
+            activeCalls[callID] = callInfo
         }
+        hangupCall(callID)
+    }
+
+    /// Hangs up the displayed call.
+    func hangupCall() {
+        guard let callID = activeCallID else { return }
+        if activeCalls[callID]?.isIncomingRinging == true {
+            declineCall(callID)
+        } else {
+            hangupCall(callID)
+        }
+    }
+
+    /// Hangs up a call. The engine reports the end with an ENDED event.
+    func hangupCall(_ callID: CallID) {
+        IncomingCallManager.shared.handleCallEnded(callID)
 
         do {
             try TonePhoneCore.shared.hangupCall(callID)
-            // Update the call info in dictionary
+        } catch TonePhoneError.notFound {
+            // Already ended on the engine side; clean up locally
             if var callInfo = activeCalls[callID] {
+                recordCallHistory(callInfo)
+                callInfo.historyRecorded = true
                 callInfo.state = .ended(reason: nil)
                 activeCalls[callID] = callInfo
             }
-            // Immediately show ended state and schedule cleanup
-            callState = .ended(reason: nil)
-            stopCallDurationTimer()
-            scheduleCallCleanup(callID: callID, delay: 1.0)
+            if activeCallID == callID {
+                callState = .ended(reason: nil)
+                stopCallDurationTimer()
+            }
+            scheduleCallCleanup(callID: callID, delay: 0.5)
         } catch {
-            errorMessage = "Failed to hang up call: \(error.localizedDescription)"
-            print("AppViewModel: Failed to hang up call: \(error)")
+            errorMessage = "The call couldn’t be ended: \(error.localizedDescription)"
         }
     }
 
     /// Toggles mute state for the current call.
     func toggleMute() {
-        guard let callID = activeCallID else {
-            print("AppViewModel: No active call to mute")
-            return
-        }
+        guard let callID = activeCallID else { return }
 
         let newMuteState = !isMuted
         do {
             try TonePhoneCore.shared.muteCall(callID, mute: newMuteState)
             isMuted = newMuteState
-            // Update dictionary
-            if var callInfo = activeCalls[callID] {
-                callInfo.isMuted = newMuteState
-                activeCalls[callID] = callInfo
-            }
+            activeCalls[callID]?.isMuted = newMuteState
         } catch {
-            errorMessage = "Failed to \(newMuteState ? "mute" : "unmute"): \(error.localizedDescription)"
-            print("AppViewModel: Failed to toggle mute: \(error)")
+            errorMessage = "The microphone couldn’t be \(newMuteState ? "muted" : "unmuted")."
         }
     }
 
     /// Toggles hold state for the current call.
     func toggleHold() {
-        guard let callID = activeCallID else {
-            print("AppViewModel: No active call to hold")
-            return
-        }
+        guard let callID = activeCallID else { return }
 
-        print("AppViewModel: toggleHold called for call \(callID), current isOnHold: \(isOnHold)")
         let newHoldState = !isOnHold
         do {
+            if !newHoldState {
+                // Resuming one call holds the others
+                holdAllActiveCalls(except: callID)
+            }
             try TonePhoneCore.shared.holdCall(callID, hold: newHoldState)
             isOnHold = newHoldState
             callState = newHoldState ? .held : .established
-            // Update dictionary
-            if var callInfo = activeCalls[callID] {
-                callInfo.isOnHold = newHoldState
-                callInfo.state = newHoldState ? .held : .established
-                activeCalls[callID] = callInfo
-            }
+            activeCalls[callID]?.isOnHold = newHoldState
+            activeCalls[callID]?.state = newHoldState ? .held : .established
         } catch {
-            errorMessage = "Failed to \(newHoldState ? "hold" : "resume"): \(error.localizedDescription)"
-            print("AppViewModel: Failed to toggle hold: \(error)")
+            errorMessage = "The call couldn’t be \(newHoldState ? "put on hold" : "resumed")."
         }
     }
 
     /// Sends DTMF digits during the current call.
     /// - Parameter digit: The DTMF digit to send.
     func sendDTMF(_ digit: String) {
-        guard let callID = activeCallID else {
-            print("AppViewModel: No active call for DTMF")
-            return
-        }
-
-        do {
-            try TonePhoneCore.shared.sendDTMF(callID, digits: digit)
-        } catch {
-            print("AppViewModel: Failed to send DTMF: \(error)")
-        }
+        guard let callID = activeCallID else { return }
+        try? TonePhoneCore.shared.sendDTMF(callID, digits: digit)
     }
 
     /// Sets the target call for actions without navigating.
     /// - Parameter callID: The call ID to target.
     func setTargetCall(_ callID: CallID) {
-        guard let callInfo = activeCalls[callID] else {
-            print("AppViewModel: Call \(callID) not found")
-            return
-        }
+        guard let callInfo = activeCalls[callID] else { return }
 
         activeCallID = callID
         remotePartyURI = callInfo.remoteURI
@@ -1133,13 +1121,16 @@ final class AppViewModel: ObservableObject {
         callState = callInfo.state
         isMuted = callInfo.isMuted
         isOnHold = callInfo.isOnHold
+        if callInfo.startTime != nil {
+            startCallDurationTimer(from: callInfo.startTime)
+        }
     }
 
     /// Selects a call from the list and navigates to the active call view.
     /// - Parameter callID: The call ID to select.
     func selectCall(_ callID: CallID) {
-        setTargetCall(callID)
-        currentScreen = .activeCall
+        guard let callInfo = activeCalls[callID] else { return }
+        showCall(callInfo)
     }
 
     // MARK: - Navigation
@@ -1174,7 +1165,6 @@ final class AppViewModel: ObservableObject {
                 selectedInputDevice = existing
             } else {
                 // Device no longer exists - fall back to system default
-                print("AppViewModel: Input device '\(selected.name)' no longer available, using system default")
                 selectedInputDevice = nil
                 clearSavedInputDevice()
             }
@@ -1186,7 +1176,6 @@ final class AppViewModel: ObservableObject {
                 selectedOutputDevice = existing
             } else {
                 // Device no longer exists - fall back to system default
-                print("AppViewModel: Output device '\(selected.name)' no longer available, using system default")
                 selectedOutputDevice = nil
                 clearSavedOutputDevice()
             }
@@ -1209,15 +1198,12 @@ final class AppViewModel: ObservableObject {
                 do {
                     try TonePhoneCore.shared.setInputDevice(matchingDevice)
                     selectedInputDevice = matchingDevice
-                    print("AppViewModel: Restored input device: \(matchingDevice.name)")
                 } catch {
                     // Failed to apply - keep selection as nil (system default)
-                    print("AppViewModel: Failed to restore input device: \(error)")
                     clearSavedInputDevice()
                 }
             } else {
                 // Saved device no longer exists - clear preference and use default
-                print("AppViewModel: Saved input device '\(savedInputName)' not found, using system default")
                 clearSavedInputDevice()
             }
         }
@@ -1230,15 +1216,12 @@ final class AppViewModel: ObservableObject {
                 do {
                     try TonePhoneCore.shared.setOutputDevice(matchingDevice)
                     selectedOutputDevice = matchingDevice
-                    print("AppViewModel: Restored output device: \(matchingDevice.name)")
                 } catch {
                     // Failed to apply - keep selection as nil (system default)
-                    print("AppViewModel: Failed to restore output device: \(error)")
                     clearSavedOutputDevice()
                 }
             } else {
                 // Saved device no longer exists - clear preference and use default
-                print("AppViewModel: Saved output device '\(savedOutputName)' not found, using system default")
                 clearSavedOutputDevice()
             }
         }
@@ -1280,12 +1263,10 @@ final class AppViewModel: ObservableObject {
         do {
             try TonePhoneCore.shared.setInputDevice(device)
             saveAudioDevicePreferences()
-            print("AppViewModel: Input device set to \(device?.name ?? "System Default")")
         } catch {
             // Roll back on failure
             selectedInputDevice = previousDevice
             errorMessage = "Failed to set input device: \(error.localizedDescription)"
-            print("AppViewModel: Failed to set input device: \(error)")
         }
     }
 
@@ -1298,12 +1279,10 @@ final class AppViewModel: ObservableObject {
         do {
             try TonePhoneCore.shared.setOutputDevice(device)
             saveAudioDevicePreferences()
-            print("AppViewModel: Output device set to \(device?.name ?? "System Default")")
         } catch {
             // Roll back on failure
             selectedOutputDevice = previousDevice
             errorMessage = "Failed to set output device: \(error.localizedDescription)"
-            print("AppViewModel: Failed to set output device: \(error)")
         }
     }
 

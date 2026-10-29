@@ -7,151 +7,108 @@
 
 import SwiftUI
 
-/// Screen for selecting or adding SIP accounts.
+/// Screen for choosing an account to connect.
+///
+/// Double-click or Return connects. Connection progress and errors are
+/// shown in the account's row.
 struct AccountListView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var selection: SIPAccount.ID?
+    @State private var accountPendingDeletion: SIPAccount?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            headerView
-
-            Divider()
-
-            // Content
+        Group {
             if viewModel.accounts.isEmpty {
-                emptyStateView
+                emptyState
             } else {
-                accountListView
+                accountList
             }
-
-            Divider()
-
-            // Footer
-            footerView
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    // MARK: - Header
-
-    private var headerView: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Accounts")
-                    .font(.headline)
-
-                Text("Select an account to connect")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+        .navigationTitle("Accounts")
+        .navigationSubtitle("")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.showAddAccountSheet()
+                } label: {
+                    Label("Add Account", systemImage: "plus")
+                }
+                .help("Add Account (⌘N)")
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .confirmationDialog(
+            "Delete \(accountPendingDeletion?.title ?? "account")?",
+            isPresented: Binding(
+                get: { accountPendingDeletion != nil },
+                set: { if !$0 { accountPendingDeletion = nil } }
+            ),
+            presenting: accountPendingDeletion
+        ) { account in
+            Button("Delete", role: .destructive) {
+                viewModel.deleteAccount(id: account.id)
+            }
+        } message: { _ in
+            Text("The account and its saved password are removed from this Mac.")
+        }
     }
 
     // MARK: - Empty State
 
-    private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Spacer()
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "phone.circle")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
-            Image(systemName: "person.crop.circle.badge.plus")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
+            Text("No Accounts")
+                .font(.title2.weight(.semibold))
 
-            VStack(spacing: 4) {
-                Text("No Accounts")
-                    .font(.headline)
+            Text("Add the SIP account from your phone provider to make and receive calls.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
 
-                Text("Add a SIP account to get started.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-
-            Button {
+            Button("Add Account…") {
                 viewModel.showAddAccountSheet()
-            } label: {
-                Label("Add Account", systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-
-            Spacer()
+            .padding(.top, 8)
         }
+        .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Account List
 
-    private var accountListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(viewModel.accounts) { account in
-                    VStack(spacing: 0) {
-                        AccountRowView(
-                            account: account,
-                            onConnect: {
-                                viewModel.startConnection(for: account)
-                            },
-                            onEdit: {
-                                viewModel.showEditAccountSheet(for: account)
-                            }
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-
-                        if account.id != viewModel.accounts.last?.id {
-                            Divider()
-                                .padding(.leading, 64)
-                        }
-                    }
-                }
+    private var accountList: some View {
+        List(selection: $selection) {
+            ForEach(viewModel.accounts) { account in
+                AccountRowView(account: account, viewModel: viewModel)
+                    .tag(account.id)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .contextMenu(forSelectionType: SIPAccount.ID.self) { ids in
+            if let account = account(for: ids.first) {
+                Button("Connect") { viewModel.startConnection(for: account) }
+                Button("Edit…") { viewModel.showEditAccountSheet(for: account) }
+                Divider()
+                Button("Delete…", role: .destructive) { accountPendingDeletion = account }
+            }
+        } primaryAction: { ids in
+            if let account = account(for: ids.first) {
+                viewModel.startConnection(for: account)
+            }
+        }
+        .onDeleteCommand {
+            accountPendingDeletion = account(for: selection)
+        }
     }
 
-    // MARK: - Footer
-
-    private var footerView: some View {
-        HStack {
-            Button {
-                viewModel.showAddAccountSheet()
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderless)
-            .help("Add Account")
-
-            if #available(macOS 14.0, *) {
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .help("Settings")
-            } else {
-                Button {
-                    NSApp.sendAction(#selector(AppDelegate.openSettingsWindow(_:)), to: nil, from: nil)
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .help("Settings")
-            }
-
-            Spacer()
-
-            Text("\(viewModel.accounts.count) account\(viewModel.accounts.count == 1 ? "" : "s")")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    private func account(for id: SIPAccount.ID?) -> SIPAccount? {
+        guard let id else { return nil }
+        return viewModel.accounts.first { $0.id == id }
     }
 }
 
@@ -159,80 +116,80 @@ struct AccountListView: View {
 
 struct AccountRowView: View {
     let account: SIPAccount
-    let onConnect: () -> Void
-    let onEdit: () -> Void
+    @ObservedObject var viewModel: AppViewModel
 
-    var body: some View {
-        HStack(spacing: 12) {
-            // Avatar
-            avatar
-
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(account.displayName.isEmpty ? account.username : account.displayName)
-                        .font(.system(size: 13, weight: .medium))
-                        .lineLimit(1)
-
-                    if account.autoLogin {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(.accentColor)
-                            .help("Auto-connect on launch")
-                    }
-                }
-
-                Text("\(account.username)@\(account.server)")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            // Edit button - always visible
-            Button {
-                onEdit()
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help("Edit Account")
-
-            // Connect button
-            Button("Connect") {
-                onConnect()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+    private var isConnecting: Bool {
+        viewModel.connectingAccount?.id == account.id
     }
 
-    private var avatar: some View {
-        ZStack {
-            Circle()
-                .fill(Color.accentColor.opacity(0.15))
-                .frame(width: 36, height: 36)
+    private var failure: String? {
+        guard isConnecting, case .failed(let reason) = viewModel.registrationStatus else { return nil }
+        return reason ?? "Couldn’t connect."
+    }
 
-            Text(account.initials)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundColor(.accentColor)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                CallerAvatar(title: account.title, size: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.title)
+                        .lineLimit(1)
+                    Text(account.address)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .accessibilityElement(children: .combine)
+
+                Spacer()
+
+                trailingControl
+            }
+
+            if let failure {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack {
+                        Button("Edit Account…") { viewModel.editConnectingAccount() }
+                        Button("Cancel") { viewModel.cancelConnection() }
+                        Button("Try Again") { viewModel.retryConnection() }
+                    }
+                    .controlSize(.small)
+                }
+                .padding(.leading, 42)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var trailingControl: some View {
+        if isConnecting && failure == nil {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Button("Cancel") { viewModel.cancelConnection() }
+                    .controlSize(.small)
+            }
+            .accessibilityLabel("Connecting")
+        } else if failure == nil {
+            Button("Connect") {
+                viewModel.startConnection(for: account)
+            }
+            .controlSize(.small)
         }
     }
 }
 
 // MARK: - Preview
 
-#Preview("With Accounts") {
-    AccountListView(viewModel: AppViewModel.shared)
-        .frame(width: 380, height: 500)
-}
-
-#Preview("Empty") {
+#Preview("Accounts") {
     AccountListView(viewModel: AppViewModel.shared)
         .frame(width: 380, height: 500)
 }

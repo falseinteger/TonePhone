@@ -16,10 +16,10 @@ private struct LicenseEntry: Identifiable {
     let text: String
 }
 
-/// Displays full license text for all third-party dependencies.
+/// Window listing the full license text of every third-party dependency.
 ///
 /// Satisfies App Store attribution requirements.
-struct LicensesSettingsView: View {
+struct AcknowledgementsView: View {
     @State private var selectedLicense: LicenseEntry?
 
     private static let licenses: [LicenseEntry] = [
@@ -138,60 +138,44 @@ struct LicensesSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("TonePhone is open source software licensed under the MIT License. It uses the following third-party components:")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 20) {
+                Text("TonePhone is open source software released under the MIT License. It is built on the following open source projects.")
+                    .foregroundStyle(.secondary)
 
                 ForEach(Self.licenses) { entry in
                     licenseSection(entry)
                 }
-
-                Spacer()
             }
-            .padding(24)
+            .padding(20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minWidth: 520, minHeight: 420)
+        .navigationTitle("Acknowledgements")
     }
 
     // MARK: - License Section
 
     private func licenseSection(_ entry: LicenseEntry) -> some View {
-        SettingsSection(title: entry.name) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(entry.spdx)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    if let url = URL(string: entry.url) {
-                        Link(destination: url) {
-                            HStack(spacing: 4) {
-                                Text("Source")
-                                    .font(.system(size: 11))
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.system(size: 10))
-                            }
-                        }
-                    }
+        GroupBox {
+            Text(entry.text)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(4)
+        } label: {
+            HStack {
+                Text(entry.name).font(.headline)
+                Text(entry.spdx).foregroundStyle(.secondary)
+                Spacer()
+                if let url = URL(string: entry.url) {
+                    Link("Source Code", destination: url)
                 }
-
-                Divider()
-
-                Text(entry.text)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(12)
         }
     }
 }
 
-#Preview("Licenses") {
-    LicensesSettingsView()
-        .frame(width: 500, height: 600)
+#Preview("Acknowledgements") {
+    AcknowledgementsView()
 }

@@ -8,168 +8,89 @@
 import SwiftUI
 
 /// Displays the call history for the current account.
+///
+/// Double-click or Return calls back; the context menu offers Call, Copy and Delete.
 struct CallHistoryView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var records: [CallRecord] = []
     let onRedial: (String) -> Void
 
+    @State private var records: [CallRecord] = []
+    @State private var selection = Set<CallRecord.ID>()
+    @State private var showClearConfirmation = false
+    @State private var formatVersion = 0
+
     var body: some View {
-        Group {
-            if records.isEmpty {
-                emptyState
-            } else {
-                list
+        List(selection: $selection) {
+            ForEach(records) { record in
+                CallHistoryRow(record: record, formatVersion: formatVersion)
+                    .tag(record.id)
             }
+        }
+        .contextMenu(forSelectionType: CallRecord.ID.self) { ids in
+            let selected = records.filter { ids.contains($0.id) }
+            if let record = selected.first, selected.count == 1 {
+                Button("Call \(CallHistoryRow.title(for: record))") {
+                    onRedial(record.remoteURI)
+                }
+                Button("Copy Address") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(record.remoteURI, forType: .string)
+                }
+                Divider()
+            }
+            if !selected.isEmpty {
+                Button(selected.count == 1 ? "Delete" : "Delete \(selected.count) Calls", role: .destructive) {
+                    delete(ids)
+                }
+            }
+            if !records.isEmpty {
+                Button("Clear All Recents…") {
+                    showClearConfirmation = true
+                }
+            }
+        } primaryAction: { ids in
+            if let record = records.first(where: { ids.contains($0.id) }) {
+                onRedial(record.remoteURI)
+            }
+        }
+        .onDeleteCommand {
+            delete(selection)
+        }
+        .overlay {
+            if records.isEmpty {
+                VStack(spacing: 6) {
+                    Text("No Recent Calls")
+                        .font(.title3)
+                    Text("Calls you make and receive appear here.")
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
+            }
+        }
+        .confirmationDialog("Clear all recent calls?", isPresented: $showClearConfirmation) {
+            Button("Clear Recents", role: .destructive) {
+                guard let accountID = viewModel.activeAccount?.id else { return }
+                CallHistoryStore.shared.clearHistory(for: accountID)
+                NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
+            }
+        } message: {
+            Text("This can’t be undone.")
         }
         .onAppear { reload() }
         .onReceive(NotificationCenter.default.publisher(for: .callHistoryDidChange)) { _ in
             reload()
         }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Spacer()
-            Image(systemName: "clock")
-                .font(.system(size: 28))
-                .foregroundColor(.secondary.opacity(0.5))
-            Text("No recent calls")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - List
-
-    private var list: some View {
-        VStack(spacing: 0) {
-            // Header with clear button
-            HStack {
-                Text("Recents")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("Clear") {
-                    guard let accountID = viewModel.activeAccount?.id else { return }
-                    CallHistoryStore.shared.clearHistory(for: accountID)
-                    NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
-                }
-                .font(.system(size: 11))
-                .buttonStyle(.plain)
-                .foregroundColor(.accentColor)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(records) { record in
-                        callRow(record)
-                        if record.id != records.last?.id {
-                            Divider().padding(.leading, 48)
-                        }
-                    }
-                }
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .phoneNumberFormatDidChange)) { _ in
+            formatVersion += 1
         }
     }
 
-    // MARK: - Row
-
-    private func callRow(_ record: CallRecord) -> some View {
-        HStack(spacing: 10) {
-            // Direction icon
-            directionIcon(record.direction)
-                .frame(width: 20)
-
-            // Name / number
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayName(for: record))
-                    .font(.system(size: 13))
-                    .foregroundColor(record.direction == .missed ? .red : .primary)
-                    .lineLimit(1)
-
-                Text(formattedDate(record.timestamp))
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            // Duration
-            if record.duration > 0 {
-                Text(formattedDuration(record.duration))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-
-            // Redial button
-            Button {
-                onRedial(record.remoteURI)
-            } label: {
-                Image(systemName: "phone.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.accentColor)
-            }
-            .buttonStyle(.plain)
-            .help("Call \(displayName(for: record))")
+    private func delete(_ ids: Set<CallRecord.ID>) {
+        for id in ids {
+            CallHistoryStore.shared.deleteRecord(id: id)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
-    }
-
-    // MARK: - Helpers
-
-    private func directionIcon(_ direction: CallDirection) -> some View {
-        Group {
-            switch direction {
-            case .outbound:
-                Image(systemName: "phone.arrow.up.right")
-                    .foregroundColor(.secondary)
-            case .inbound:
-                Image(systemName: "phone.arrow.down.left")
-                    .foregroundColor(.secondary)
-            case .missed:
-                Image(systemName: "phone.arrow.down.left")
-                    .foregroundColor(.red)
-            }
-        }
-        .font(.system(size: 13))
-    }
-
-    private func displayName(for record: CallRecord) -> String {
-        if let name = record.remoteName, !name.isEmpty {
-            return PhoneNumberService.formatForDisplay(name)
-        }
-        return PhoneNumberService.formatForDisplay(record.remoteURI)
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            return date.formatted(date: .omitted, time: .shortened)
-        } else if calendar.isDateInYesterday(date) {
-            return "Yesterday, " + date.formatted(date: .omitted, time: .shortened)
-        } else {
-            return date.formatted(date: .abbreviated, time: .shortened)
-        }
-    }
-
-    private func formattedDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = (Int(duration) % 3600) / 60
-        let seconds = Int(duration) % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
+        selection.subtract(ids)
+        NotificationCenter.default.post(name: .callHistoryDidChange, object: nil)
     }
 
     private func reload() {
@@ -178,6 +99,87 @@ struct CallHistoryView: View {
             return
         }
         records = CallHistoryStore.shared.records(for: accountID)
+    }
+}
+
+/// A row in the recents list.
+struct CallHistoryRow: View {
+    let record: CallRecord
+    /// Changes when number formatting settings change, to re-render.
+    let formatVersion: Int
+
+    static func title(for record: CallRecord) -> String {
+        PhoneNumberService.partyLabels(name: record.remoteName, uri: record.remoteURI).title
+    }
+
+    private var isMissed: Bool { record.direction == .missed }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbolName)
+                .foregroundStyle(isMissed ? .red : .secondary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.title(for: record))
+                    .foregroundStyle(isMissed ? .red : .primary)
+                    .lineLimit(1)
+
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(formattedDate(record.timestamp))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Double-click to call back")
+    }
+
+    private var symbolName: String {
+        switch record.direction {
+        case .outbound: return "phone.arrow.up.right"
+        case .inbound: return "phone.arrow.down.left"
+        case .missed: return "phone.down"
+        }
+    }
+
+    /// "Missed", "Outgoing · 2:15", plus the number when a name is shown.
+    private var detail: String {
+        var parts: [String] = []
+        switch record.direction {
+        case .missed: parts.append("Missed")
+        case .inbound: parts.append("Incoming")
+        case .outbound: parts.append("Outgoing")
+        }
+        if record.duration > 0 {
+            parts.append(AppViewModel.formatDuration(record.duration))
+        }
+        if let subtitle = PhoneNumberService.partyLabels(name: record.remoteName, uri: record.remoteURI).subtitle {
+            parts.append(subtitle)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+        if let days = calendar.dateComponents([.day], from: date, to: Date()).day, days < 7 {
+            return date.formatted(.dateTime.weekday(.wide))
+        }
+        return date.formatted(date: .numeric, time: .omitted)
     }
 }
 

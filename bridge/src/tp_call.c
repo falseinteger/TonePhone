@@ -93,18 +93,11 @@ static call_entry_t *find_call_by_ptr(const struct call *call)
  * Call Functions
  * ============================================================================= */
 
-tp_error_t tp_call_start(const char *uri, tp_call_id_t *out_id)
+static tp_error_t call_start_locked(const char *uri, tp_call_id_t *out_id)
 {
     int err;
     struct ua *ua;
     struct call *call = NULL;
-    call_entry_t *entry;
-
-    if (!uri || !out_id) {
-        return TP_ERR_INVALID_ARG;
-    }
-
-    *out_id = TP_INVALID_ID;
 
     /* Get the default UA (returns a reference) */
     ua = tp_account_get_default_ua();
@@ -114,18 +107,16 @@ tp_error_t tp_call_start(const char *uri, tp_call_id_t *out_id)
     }
 
     pthread_mutex_lock(&g_mutex);
+    bool has_slot = find_free_slot() != NULL;
+    pthread_mutex_unlock(&g_mutex);
 
-    /* Find free slot */
-    entry = find_free_slot();
-    if (!entry) {
-        pthread_mutex_unlock(&g_mutex);
+    if (!has_slot) {
         mem_deref(ua);
         return TP_ERR_NO_MEMORY;
     }
 
-    pthread_mutex_unlock(&g_mutex);
-
-    /* Start the call (this will fire call events) */
+    /* Start the call. The OUTGOING event fires synchronously from
+     * ua_connect and registers the call (see tp_call_register). */
     info("tp_call: starting call to %s\n", uri);
     err = ua_connect(ua, &call, NULL, uri, VIDMODE_OFF);
 
@@ -137,24 +128,35 @@ tp_error_t tp_call_start(const char *uri, tp_call_id_t *out_id)
         return TP_ERR_CALL_FAILED;
     }
 
-    pthread_mutex_lock(&g_mutex);
+    *out_id = tp_call_register(call);
+    if (*out_id == TP_INVALID_ID) {
+        warning("tp_call: no slot for new call\n");
+        return TP_ERR_NO_MEMORY;
+    }
 
-    /* Store call entry */
-    entry->id = g_calls.next_id++;
-    entry->call = call;
-    entry->in_use = true;
-    entry->muted = false;
-
-    *out_id = entry->id;
-
-    pthread_mutex_unlock(&g_mutex);
-
-    info("tp_call: started call %u\n", entry->id);
+    info("tp_call: started call %u\n", *out_id);
 
     return TP_OK;
 }
 
-tp_error_t tp_call_answer(tp_call_id_t id)
+tp_error_t tp_call_start(const char *uri, tp_call_id_t *out_id)
+{
+    tp_error_t result;
+
+    if (!uri || !out_id) {
+        return TP_ERR_INVALID_ARG;
+    }
+
+    *out_id = TP_INVALID_ID;
+
+    re_thread_enter();
+    result = call_start_locked(uri, out_id);
+    re_thread_leave();
+
+    return result;
+}
+
+static tp_error_t call_answer_locked(tp_call_id_t id)
 {
     call_entry_t *entry;
     struct call *call;
@@ -198,7 +200,18 @@ tp_error_t tp_call_answer(tp_call_id_t id)
     return TP_OK;
 }
 
-tp_error_t tp_call_hangup(tp_call_id_t id)
+tp_error_t tp_call_answer(tp_call_id_t id)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_answer_locked(id);
+    re_thread_leave();
+
+    return result;
+}
+
+static tp_error_t call_hangup_locked(tp_call_id_t id)
 {
     call_entry_t *entry;
     struct call *call;
@@ -217,19 +230,30 @@ tp_error_t tp_call_hangup(tp_call_id_t id)
 
     call = entry->call;
 
-    /* Mark as not in use */
-    entry->in_use = false;
-    entry->call = NULL;
-
     pthread_mutex_unlock(&g_mutex);
 
     info("tp_call: hanging up call %u\n", id);
-    call_hangup(call, 0, NULL);
+
+    /* ua_hangup sends BYE/CANCEL/486, emits BEVENT_CALL_CLOSED (which
+     * unregisters the call and reports TP_CALL_STATE_ENDED) and frees
+     * the call. call_hangup alone would leak the call inside the UA. */
+    ua_hangup(call_get_ua(call), call, 0, "Call ended");
 
     return TP_OK;
 }
 
-tp_error_t tp_call_hold(tp_call_id_t id, bool hold)
+tp_error_t tp_call_hangup(tp_call_id_t id)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_hangup_locked(id);
+    re_thread_leave();
+
+    return result;
+}
+
+static tp_error_t call_hold_locked(tp_call_id_t id, bool hold)
 {
     call_entry_t *entry;
     struct call *call;
@@ -266,7 +290,18 @@ tp_error_t tp_call_hold(tp_call_id_t id, bool hold)
     return TP_OK;
 }
 
-tp_error_t tp_call_mute(tp_call_id_t id, bool mute)
+tp_error_t tp_call_hold(tp_call_id_t id, bool hold)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_hold_locked(id, hold);
+    re_thread_leave();
+
+    return result;
+}
+
+static tp_error_t call_mute_locked(tp_call_id_t id, bool mute)
 {
     call_entry_t *entry;
     struct call *call;
@@ -298,7 +333,18 @@ tp_error_t tp_call_mute(tp_call_id_t id, bool mute)
     return TP_OK;
 }
 
-tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits)
+tp_error_t tp_call_mute(tp_call_id_t id, bool mute)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_mute_locked(id, mute);
+    re_thread_leave();
+
+    return result;
+}
+
+static tp_error_t call_send_dtmf_locked(tp_call_id_t id, const char *digits)
 {
     call_entry_t *entry;
     struct call *call;
@@ -333,6 +379,17 @@ tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits)
     return TP_OK;
 }
 
+tp_error_t tp_call_send_dtmf(tp_call_id_t id, const char *digits)
+{
+    tp_error_t result;
+
+    re_thread_enter();
+    result = call_send_dtmf_locked(id, digits);
+    re_thread_leave();
+
+    return result;
+}
+
 /* =============================================================================
  * ID Lookup (for event system)
  * ============================================================================= */
@@ -357,7 +414,7 @@ tp_call_id_t tp_call_find_id_by_ptr(const struct call *call)
     return result;
 }
 
-tp_call_id_t tp_call_register_incoming(struct call *call)
+tp_call_id_t tp_call_register(struct call *call)
 {
     call_entry_t *entry;
     tp_call_id_t id = TP_INVALID_ID;
@@ -393,7 +450,7 @@ tp_call_id_t tp_call_register_incoming(struct call *call)
 
     pthread_mutex_unlock(&g_mutex);
 
-    info("tp_call: registered incoming call %u\n", id);
+    info("tp_call: registered call %u\n", id);
 
     return id;
 }

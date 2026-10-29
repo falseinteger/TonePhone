@@ -2,245 +2,173 @@
 //  DialpadView.swift
 //  TonePhone
 //
-//  Dialpad view for entering phone numbers or SIP URIs.
+//  Dial field and keypad for entering phone numbers or SIP addresses.
 //
 
 import SwiftUI
 
-/// Dialpad view for entering phone numbers or SIP URIs to make calls.
+/// Text field for a number, username or SIP address, with a Call button.
 ///
-/// Native macOS design following Human Interface Guidelines.
-struct DialpadView: View {
-    /// Callback when the user initiates a call.
+/// Phone numbers are formatted while typing (if enabled in Settings);
+/// the raw digits are kept for dialing.
+struct DialField: View {
+    @Binding var input: String
     let onCall: (String) -> Void
 
-    /// The current input value.
-    @State private var input = ""
+    @FocusState private var isFocused: Bool
+    @State private var formatVersion = 0
 
-    /// Whether the input field is focused.
-    @FocusState private var isInputFocused: Bool
-
-    /// Trimmed input for validation.
     private var trimmedInput: String {
         input.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Binding that displays formatted input while storing raw dial characters.
+    /// Shows formatted input while storing what the user typed.
     private var formattedBinding: Binding<String> {
         Binding(
-            get: { PhoneNumberService.formatPartial(input) },
+            get: { _ = formatVersion; return PhoneNumberService.formatPartial(input) },
             set: { newValue in
-                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                // Preserve SIP URIs and address input as-is
-                if trimmed.lowercased().hasPrefix("sip:") ||
-                    trimmed.lowercased().hasPrefix("sips:") ||
-                    trimmed.contains("@") ||
-                    trimmed.contains(where: { $0.isLetter }) {
+                if PhoneNumberService.looksLikeAddress(newValue) {
                     input = newValue
                 } else {
-                    // Extract only dial-valid characters from phone-like input
-                    input = String(newValue.filter { "0123456789+*#".contains($0) })
+                    // Keep only characters that mean something when dialing
+                    input = PhoneNumberService.dialableCharacters(of: newValue)
                 }
             }
         )
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: 8)
+        HStack(spacing: 8) {
+            TextField("Number or address", text: formattedBinding, prompt: Text("Enter a number or address"))
+                .textFieldStyle(.roundedBorder)
+                .font(.title3)
+                .focused($isFocused)
+                .onSubmit(call)
+                .labelsHidden()
 
-            // Input field - native macOS text field style
-            inputField
-                .padding(.horizontal, 24)
-
-            // Keypad grid
-            keypadGrid
-                .padding(.horizontal, 24)
-
-            Spacer(minLength: 8)
-
-            // Action buttons
-            actionButtons
-                .padding(.horizontal, 24)
-                .padding(.bottom, 16)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            isInputFocused = true
-        }
-    }
-
-    // MARK: - Input Field
-
-    private var inputField: some View {
-        HStack(spacing: 4) {
-            TextField("Enter number or address", text: formattedBinding)
-                .textFieldStyle(.plain)
-                .font(.system(size: 18, weight: .regular))
-                .focused($isInputFocused)
-                .onSubmit { initiateCall() }
-                .accessibilityLabel("Phone number or SIP address")
-
-            if !input.isEmpty {
-                Button {
-                    if !input.isEmpty { input.removeLast() }
-                } label: {
-                    Image(systemName: "delete.backward")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.delete, modifiers: [])
-                .help("Delete")
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .textBackgroundColor))
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Keypad
-
-    private var keypadGrid: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                DialpadKey(main: "1", sub: nil, action: { append("1") })
-                DialpadKey(main: "2", sub: "ABC", action: { append("2") })
-                DialpadKey(main: "3", sub: "DEF", action: { append("3") })
-            }
-            HStack(spacing: 12) {
-                DialpadKey(main: "4", sub: "GHI", action: { append("4") })
-                DialpadKey(main: "5", sub: "JKL", action: { append("5") })
-                DialpadKey(main: "6", sub: "MNO", action: { append("6") })
-            }
-            HStack(spacing: 12) {
-                DialpadKey(main: "7", sub: "PQRS", action: { append("7") })
-                DialpadKey(main: "8", sub: "TUV", action: { append("8") })
-                DialpadKey(main: "9", sub: "WXYZ", action: { append("9") })
-            }
-            HStack(spacing: 12) {
-                DialpadKey(main: "*", sub: nil, action: { append("*") })
-                DialpadKey(main: "0", sub: "+", action: { append("0") }, longPressChar: "+", longAction: { append("+") })
-                DialpadKey(main: "#", sub: nil, action: { append("#") })
-            }
-        }
-    }
-
-    // MARK: - Action Buttons
-
-    private var actionButtons: some View {
-        HStack(spacing: 12) {
-            // Clear button
-            Button("Clear") {
-                input = ""
-            }
-            .buttonStyle(.bordered)
-            .disabled(trimmedInput.isEmpty)
-            .keyboardShortcut(.escape, modifiers: [])
-
-            // Call button
-            Button {
-                initiateCall()
-            } label: {
+            Button(action: call) {
                 Label("Call", systemImage: "phone.fill")
-                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
             .disabled(trimmedInput.isEmpty)
-            .keyboardShortcut(.return, modifiers: [])
-            .accessibilityHint(trimmedInput.isEmpty ? "Enter a number first" : "Call \(trimmedInput)")
+            .help("Call (Return)")
         }
-        .controlSize(.large)
+        .onAppear { isFocused = true }
+        .onReceive(NotificationCenter.default.publisher(for: .phoneNumberFormatDidChange)) { _ in
+            formatVersion += 1
+        }
     }
 
-    // MARK: - Actions
-
-    private func append(_ char: String) {
-        input.append(char)
-    }
-
-    private func initiateCall() {
+    private func call() {
         guard !trimmedInput.isEmpty else { return }
         onCall(trimmedInput)
+        input = ""
     }
 }
 
-// MARK: - Dialpad Key
+/// Telephone keypad. Used for dialing and for sending tones during a call.
+struct KeypadView: View {
+    let onKey: (String) -> Void
 
-private struct DialpadKey: View {
-    let main: String
-    let sub: String?
-    let action: () -> Void
-    var longPressChar: String?
-    var longAction: (() -> Void)?
+    private static let rows = [
+        ["1", "2", "3"],
+        ["4", "5", "6"],
+        ["7", "8", "9"],
+        ["*", "0", "#"],
+    ]
 
-    @State private var isHovered = false
-    @State private var isLongPressed = false
+    private static let letters: [String: String] = [
+        "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL",
+        "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ", "0": "+",
+    ]
 
     var body: some View {
-        Button {
-            // Don't fire tap if long press just occurred
-            if !isLongPressed {
-                action()
-            }
-        } label: {
-            VStack(spacing: 1) {
-                Text(main)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.primary)
-
-                if let sub = sub {
-                    Text(sub)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .tracking(0.5)
-                } else {
-                    Text(" ")
-                        .font(.system(size: 9))
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .background(isHovered ? Color(nsColor: .controlColor) : Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
-        }
-        .buttonStyle(DialpadKeyButtonStyle())
-        .onHover { isHovered = $0 }
-        .highPriorityGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    isLongPressed = true
-                    longAction?()
-                    // Reset after a short delay so next tap works
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isLongPressed = false
+        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+            ForEach(Self.rows, id: \.self) { row in
+                GridRow {
+                    ForEach(row, id: \.self) { key in
+                        Button {
+                            onKey(key)
+                        } label: {
+                            VStack(spacing: 0) {
+                                Text(key)
+                                    .font(.title2.weight(.medium))
+                                Text(Self.letters[key] ?? " ")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(width: 52, height: 40)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel(Self.accessibilityName(for: key))
                     }
                 }
-        )
-        .accessibilityLabel(main)
-        .accessibilityHint(longPressChar.map { "Hold to enter \($0)" } ?? "")
+            }
+        }
+    }
+
+    private static func accessibilityName(for key: String) -> String {
+        switch key {
+        case "*": return "Star"
+        case "#": return "Pound"
+        default: return key
+        }
     }
 }
 
-// MARK: - Dialpad Key Button Style
+/// Keypad popover for dialing: appends to the dial field; long numbers can be typed directly.
+struct DialKeypadPopover: View {
+    @Binding var input: String
+    let onCall: (String) -> Void
 
-private struct DialpadKeyButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(input.isEmpty ? " " : PhoneNumberService.formatPartial(input))
+                .font(.title2.monospacedDigit())
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel(input.isEmpty ? "No number entered" : input)
+
+            KeypadView { key in
+                input.append(key)
+            }
+
+            HStack {
+                Button {
+                    if !input.isEmpty { input.removeLast() }
+                } label: {
+                    Label("Delete", systemImage: "delete.backward")
+                }
+                .disabled(input.isEmpty)
+
+                Spacer()
+
+                Button {
+                    let number = input
+                    input = ""
+                    onCall(number)
+                } label: {
+                    Label("Call", systemImage: "phone.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .keyboardShortcut(.defaultAction)
+                .disabled(input.isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 220)
     }
 }
 
-// MARK: - Preview
+#Preview("Dial Field") {
+    DialField(input: .constant("4155550123")) { _ in }
+        .padding()
+        .frame(width: 360)
+}
 
-#Preview("Dialpad") {
-    DialpadView { uri in
-        print("Call: \(uri)")
-    }
-    .frame(width: 280, height: 400)
+#Preview("Keypad") {
+    DialKeypadPopover(input: .constant("415")) { _ in }
 }

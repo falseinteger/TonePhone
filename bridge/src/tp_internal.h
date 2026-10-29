@@ -95,11 +95,12 @@ struct call;
 tp_call_id_t tp_call_find_id_by_ptr(const struct call *call);
 
 /**
- * @brief Register an incoming call and assign it an ID
- * @param call The incoming call pointer from baresip
- * @return The assigned call ID, or TP_INVALID_ID if no slot available
+ * @brief Register a call (incoming or outgoing) and assign it an ID
+ * @param call The call pointer from baresip
+ * @return The assigned call ID (the existing one if already registered),
+ *         or TP_INVALID_ID if no slot is available
  */
-tp_call_id_t tp_call_register_incoming(struct call *call);
+tp_call_id_t tp_call_register(struct call *call);
 
 /**
  * @brief Unregister a call (called when call ends)

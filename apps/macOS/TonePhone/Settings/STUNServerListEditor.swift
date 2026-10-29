@@ -11,35 +11,33 @@ struct STUNServerListEditor: View {
     @Binding var servers: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(servers.enumerated()), id: \.offset) { index, _ in
-                HStack(spacing: 8) {
-                    TextField("stun:server:port", text: binding(for: index))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 12, design: .monospaced))
+        VStack(alignment: .trailing, spacing: 6) {
+            ForEach(servers.indices, id: \.self) { index in
+                HStack(spacing: 6) {
+                    TextField("STUN server", text: binding(for: index), prompt: Text("stun:server:port"))
+                        .labelsHidden()
+                        .font(.body.monospaced())
 
-                    if servers.count > 1 {
-                        Button {
-                            servers.remove(at: index)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove server")
+                    Button {
+                        servers.remove(at: index)
+                    } label: {
+                        Label("Remove Server", systemImage: "minus")
+                            .labelStyle(.iconOnly)
                     }
+                    .buttonStyle(.borderless)
+                    .disabled(servers.count <= 1)
+                    .help("Remove server")
                 }
             }
 
             Button {
                 servers.append("")
             } label: {
-                Label("Add Server", systemImage: "plus.circle.fill")
-                    .font(.system(size: 12))
+                Label("Add Server", systemImage: "plus")
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.accentColor)
+            .buttonStyle(.borderless)
         }
+        .frame(maxWidth: 280)
     }
 
     private func binding(for index: Int) -> Binding<String> {
@@ -47,21 +45,9 @@ struct STUNServerListEditor: View {
             get: { servers.indices.contains(index) ? servers[index] : "" },
             set: { newValue in
                 if servers.indices.contains(index) {
-                    servers[index] = newValue
+                    servers[index] = newValue.trimmingCharacters(in: .whitespaces)
                 }
             }
         )
     }
-}
-
-#Preview("STUN Server List") {
-    struct Wrapper: View {
-        @State private var servers = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
-        var body: some View {
-            STUNServerListEditor(servers: $servers)
-                .padding()
-                .frame(width: 400)
-        }
-    }
-    return Wrapper()
 }

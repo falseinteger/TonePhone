@@ -83,6 +83,9 @@ typedef struct {
     const char *transport;        /**< Transport: "udp", "tcp", "tls" (optional) */
     const char *stun_server;      /**< STUN server (optional, e.g., "stun:stun.l.google.com:19302") */
     const char *medianat;         /**< NAT traversal method (optional, e.g., "ice", "stun") */
+    const char *media_encryption; /**< Media encryption (optional): "srtp", "srtp-mand", "dtls_srtp" */
+    const char *dtmf_mode;        /**< DTMF mode (optional): "rtpevent", "info", "auto" */
+    uint32_t reg_interval;        /**< Registration interval in seconds (0 = 3600) */
     bool nat_pinhole;             /**< Enable NAT pinhole keep-alive (recommended for NAT) */
     bool register_on_add;         /**< Register immediately after adding */
 } tp_account_config_t;
@@ -165,7 +168,9 @@ typedef struct {
             tp_call_id_t id;
             tp_call_state_t state;
             const char *remote_uri;   /**< Remote party URI */
+            const char *remote_name;  /**< Remote display name (may be NULL) */
             const char *reason;       /**< Hangup reason if ended (may be NULL) */
+            tp_account_id_t account_id; /**< Account that owns the call */
         } call;
         struct {
             tp_call_id_t id;
@@ -419,6 +424,14 @@ tp_error_t tp_log_get_path(char *buf, size_t size);
  * @return TP_OK on success
  */
 tp_error_t tp_log_flush(void);
+
+/**
+ * @brief Enable or disable SIP message tracing
+ * @param enabled When true, every SIP message sent or received is written
+ *                to the log at info level (credentials are redacted)
+ * @return TP_OK on success, TP_ERR_NOT_INITIALIZED if the core is not up
+ */
+tp_error_t tp_log_set_sip_trace(bool enabled);
 
 /* =============================================================================
  * Audio Device Types

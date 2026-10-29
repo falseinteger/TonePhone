@@ -182,14 +182,15 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
     if (!call)
         return;
 
-    /* For incoming calls, register them first */
-    if (ev == BEVENT_CALL_INCOMING) {
-        call_id = tp_call_register_incoming(call);
+    /* New calls are registered on their first event. Outgoing calls fire
+     * BEVENT_CALL_OUTGOING from inside ua_connect, before tp_call_start
+     * returns, so they must be registered here too. */
+    if (ev == BEVENT_CALL_INCOMING || ev == BEVENT_CALL_OUTGOING) {
+        call_id = tp_call_register(call);
         if (call_id == TP_INVALID_ID) {
-            warning("tp_events: failed to register incoming call\n");
+            warning("tp_events: failed to register call\n");
             return;
         }
-        info("tp_events: registered incoming call %u\n", call_id);
     } else {
         call_id = get_call_id_for_call(call);
         if (call_id == TP_INVALID_ID) {
@@ -210,6 +211,7 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
         return;
 
     const char *peer_uri = call_peeruri(call);
+    const char *peer_name = call_peername(call);
     const char *text = bevent_get_text(event);
 
     tp_event_t tp_event = {
@@ -218,7 +220,9 @@ static void handle_call_event(enum bevent_ev ev, struct bevent *event)
             .id = call_id,
             .state = state,
             .remote_uri = peer_uri,
+            .remote_name = peer_name,
             .reason = (state == TP_CALL_STATE_ENDED) ? text : NULL,
+            .account_id = tp_account_find_id_by_ua(call_get_ua(call)),
         },
     };
 

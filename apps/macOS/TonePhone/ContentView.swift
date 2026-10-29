@@ -2,23 +2,18 @@
 //  ContentView.swift
 //  TonePhone
 //
-//  Main content view for the TonePhone application.
+//  Main window content.
 //
 
 import SwiftUI
 
-/// Main content view for the TonePhone application window.
-///
-/// Manages the navigation between different screens based on app state.
-/// Follows macOS Human Interface Guidelines for window structure.
+/// Main window content. Switches screens based on app state.
 struct ContentView: View {
     @ObservedObject private var viewModel = AppViewModel.shared
 
     var body: some View {
         content
-            .frame(minWidth: 280, minHeight: 400)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
             .sheet(isPresented: $viewModel.isAccountSheetPresented) {
                 AccountConfigView(account: viewModel.selectedAccount)
                     .onSave { account, password in
@@ -28,17 +23,12 @@ struct ContentView: View {
                         viewModel.deleteAccount(id: accountID)
                     }
             }
-            .sheet(isPresented: $viewModel.isConnectionSheetPresented) {
-                ConnectionProgressView(viewModel: viewModel)
-            }
-            .alert("Error", isPresented: errorBinding) {
+            .alert(alertTitle, isPresented: errorBinding) {
                 Button("OK", role: .cancel) {
                     viewModel.errorMessage = nil
                 }
             } message: {
-                if let message = viewModel.errorMessage {
-                    Text(message)
-                }
+                Text(alertMessage)
             }
     }
 
@@ -58,7 +48,19 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Alert
+
+    /// The first sentence of the error is the alert title; the rest is the message.
+    private var alertParts: (title: String, message: String) {
+        let text = viewModel.errorMessage ?? ""
+        if let range = text.range(of: ". ") {
+            return (String(text[..<range.lowerBound]), String(text[range.upperBound...]))
+        }
+        return (text.hasSuffix(".") ? String(text.dropLast()) : text, "")
+    }
+
+    private var alertTitle: String { alertParts.title }
+    private var alertMessage: String { alertParts.message }
 
     private var errorBinding: Binding<Bool> {
         Binding(
@@ -70,5 +72,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .frame(width: 320, height: 480)
+        .frame(width: 380, height: 560)
 }

@@ -19,15 +19,44 @@ enum SIPTransport: String, Codable, CaseIterable {
     var displayName: String {
         rawValue.uppercased()
     }
+
+    /// Port used when the account does not specify one.
+    var defaultPort: Int {
+        self == .tls ? 5061 : 5060
+    }
+}
+
+/// Media (RTP) encryption for calls.
+enum MediaEncryption: String, Codable, CaseIterable {
+    case none = "none"
+    case srtpOptional = "srtp"
+    case srtpRequired = "srtp-mand"
+    case dtlsSRTP = "dtls_srtp"
+
+    var displayName: String {
+        switch self {
+        case .none: return "Off"
+        case .srtpOptional: return "SRTP When Available"
+        case .srtpRequired: return "SRTP Required"
+        case .dtlsSRTP: return "DTLS-SRTP"
+        }
+    }
+
+    /// Value passed to the SIP engine, nil when encryption is off.
+    var engineValue: String? {
+        self == .none ? nil : rawValue
+    }
 }
 
 /// Represents a SIP account configuration.
 struct SIPAccount: Codable, Identifiable, Equatable {
     /// Unique identifier for the account.
     let id: UUID
-    /// SIP server address (e.g., "sip.example.com").
+    /// SIP domain or server address (e.g., "sip.example.com").
     var server: String
-    /// SIP username.
+    /// Server port. Nil uses the transport's default (5060, or 5061 for TLS).
+    var port: Int?
+    /// SIP username (the user part of the address).
     var username: String
     /// Display name (optional).
     var displayName: String
@@ -35,6 +64,19 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     var transport: SIPTransport
     /// Whether to automatically connect on app launch (also makes this the default account).
     var autoLogin: Bool
+
+    // MARK: - Connection
+
+    /// Authentication username, when the provider requires one that differs from the username.
+    var authUsername: String
+    /// Outbound proxy host (optionally with port). Empty means none.
+    var outboundProxy: String
+    /// How often to refresh the registration, in seconds.
+    var registrationInterval: Int
+    /// Media encryption policy.
+    var mediaEncryption: MediaEncryption
+    /// How dialed phone numbers are sent for this account. Nil uses the global setting.
+    var dialFormatOverride: PhoneNumberDialFormat?
 
     // MARK: - Per-Account Overrides
 
@@ -47,14 +89,24 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     /// Override the global DTMF mode for this account.
     var dtmfModeOverride: DTMFMode?
 
+    /// Default registration interval. Short enough to keep NAT bindings
+    /// alive on typical home routers.
+    static let defaultRegistrationInterval = 600
+
     /// Creates a new account with default values.
     init(
         id: UUID = UUID(),
         server: String = "",
+        port: Int? = nil,
         username: String = "",
         displayName: String = "",
         transport: SIPTransport = .udp,
         autoLogin: Bool = false,
+        authUsername: String = "",
+        outboundProxy: String = "",
+        registrationInterval: Int = SIPAccount.defaultRegistrationInterval,
+        mediaEncryption: MediaEncryption = .none,
+        dialFormatOverride: PhoneNumberDialFormat? = nil,
         stunServerOverride: String? = nil,
         natMethodOverride: NATMethod? = nil,
         natPinholeOverride: Bool? = nil,
@@ -62,19 +114,94 @@ struct SIPAccount: Codable, Identifiable, Equatable {
     ) {
         self.id = id
         self.server = server
+        self.port = port
         self.username = username
         self.displayName = displayName
         self.transport = transport
         self.autoLogin = autoLogin
+        self.authUsername = authUsername
+        self.outboundProxy = outboundProxy
+        self.registrationInterval = registrationInterval
+        self.mediaEncryption = mediaEncryption
+        self.dialFormatOverride = dialFormatOverride
         self.stunServerOverride = stunServerOverride
         self.natMethodOverride = natMethodOverride
         self.natPinholeOverride = natPinholeOverride
         self.dtmfModeOverride = dtmfModeOverride
     }
 
-    /// Constructs the SIP URI from server and username.
+    // MARK: - Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case id, server, port, username, displayName, transport, autoLogin
+        case authUsername, outboundProxy, registrationInterval, mediaEncryption, dialFormatOverride
+        case stunServerOverride, natMethodOverride, natPinholeOverride, dtmfModeOverride
+    }
+
+    /// Decodes leniently so accounts saved by older versions keep loading:
+    /// missing keys get defaults and unknown enum values are ignored.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        server = try c.decode(String.self, forKey: .server)
+        port = try c.decodeIfPresent(Int.self, forKey: .port)
+        username = try c.decode(String.self, forKey: .username)
+        displayName = try c.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+        transport = (try? c.decode(SIPTransport.self, forKey: .transport)) ?? .udp
+        autoLogin = try c.decodeIfPresent(Bool.self, forKey: .autoLogin) ?? false
+        authUsername = try c.decodeIfPresent(String.self, forKey: .authUsername) ?? ""
+        outboundProxy = try c.decodeIfPresent(String.self, forKey: .outboundProxy) ?? ""
+        registrationInterval = try c.decodeIfPresent(Int.self, forKey: .registrationInterval)
+            ?? SIPAccount.defaultRegistrationInterval
+        mediaEncryption = (try? c.decode(MediaEncryption.self, forKey: .mediaEncryption)) ?? .none
+        dialFormatOverride = try? c.decode(PhoneNumberDialFormat.self, forKey: .dialFormatOverride)
+        stunServerOverride = try c.decodeIfPresent(String.self, forKey: .stunServerOverride)
+        natMethodOverride = try? c.decode(NATMethod.self, forKey: .natMethodOverride)
+        natPinholeOverride = try c.decodeIfPresent(Bool.self, forKey: .natPinholeOverride)
+        dtmfModeOverride = try? c.decode(DTMFMode.self, forKey: .dtmfModeOverride)
+    }
+
+    // MARK: - Addresses
+
+    /// Server host with any scheme, user part or whitespace removed.
+    var normalizedServer: String {
+        SIPAccount.normalizeHost(server)
+    }
+
+    /// Host and port used to reach the registrar, e.g. `sip.example.com:5080`.
+    ///
+    /// The port is omitted when it is the transport default and none was set,
+    /// so DNS SRV lookups keep working.
+    var hostPort: String {
+        let host = normalizedServer
+        guard let port, port > 0 else { return host }
+        // Keep a port the user typed into the server field
+        if SIPAccount.hostHasPort(host) { return host }
+        let bracketed = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        return "\(bracketed):\(port)"
+    }
+
+    /// Constructs the SIP address of record from server, port and username.
     var sipURI: String {
-        "sip:\(username)@\(server)"
+        "sip:\(SIPAccount.escapeUserPart(username))@\(hostPort)"
+    }
+
+    /// Short address for display, e.g. `alice@example.com`.
+    var address: String {
+        "\(username)@\(normalizedServer)"
+    }
+
+    /// Outbound proxy as a SIP URI with the account transport, or nil if none.
+    var outboundProxyURI: String? {
+        var proxy = outboundProxy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !proxy.isEmpty else { return nil }
+        if !proxy.lowercased().hasPrefix("sip:") && !proxy.lowercased().hasPrefix("sips:") {
+            proxy = "sip:\(proxy)"
+        }
+        if transport != .udp && !proxy.lowercased().contains(";transport=") {
+            proxy += ";transport=\(transport.rawValue)"
+        }
+        return proxy
     }
 
     /// Returns initials for avatar display.
@@ -87,12 +214,50 @@ struct SIPAccount: Codable, Identifiable, Equatable {
         return String(name.prefix(2)).uppercased()
     }
 
+    /// Name shown in lists: the display name, or the username when none is set.
+    var title: String {
+        displayName.isEmpty ? username : displayName
+    }
+
     /// Whether this account has any overrides configured.
     var hasOverrides: Bool {
         stunServerOverride != nil ||
         natMethodOverride != nil ||
         natPinholeOverride != nil ||
         dtmfModeOverride != nil
+    }
+
+    // MARK: - Helpers
+
+    /// Strips `sip:`/`sips:` schemes, `user@` parts, URI parameters and whitespace.
+    static func normalizeHost(_ value: String) -> String {
+        var host = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        for scheme in ["sips:", "sip:"] where host.lowercased().hasPrefix(scheme) {
+            host = String(host.dropFirst(scheme.count))
+        }
+        if let at = host.lastIndex(of: "@") {
+            host = String(host[host.index(after: at)...])
+        }
+        if let semicolon = host.firstIndex(of: ";") {
+            host = String(host[..<semicolon])
+        }
+        return host.filter { !$0.isWhitespace }
+    }
+
+    /// Whether a host string already ends in an explicit port.
+    static func hostHasPort(_ host: String) -> Bool {
+        if host.hasPrefix("[") {
+            return host.range(of: "]:") != nil
+        }
+        // A single colon means host:port; several mean a bare IPv6 address
+        return host.filter { $0 == ":" }.count == 1
+    }
+
+    /// Percent-escapes characters that are not allowed in a SIP URI user part (RFC 3261 §25.1).
+    static func escapeUserPart(_ user: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-_.!~*'()&=+$,;?/")
+        return user.addingPercentEncoding(withAllowedCharacters: allowed) ?? user
     }
 }
 

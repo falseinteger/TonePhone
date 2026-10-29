@@ -2,462 +2,395 @@
 //  ActiveCallView.swift
 //  TonePhone
 //
-//  Active call view with controls for macOS.
+//  Incoming call screen and in-call screen.
 //
 
 import SwiftUI
 
-/// Active call view following macOS Human Interface Guidelines.
+/// Shows the displayed call: the incoming call screen while it rings,
+/// the in-call screen once it is connecting or connected.
 struct ActiveCallView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var showDTMFKeypad = false
-    @State private var showAudioDevicePicker = false
-    @State private var dtmfHistory = ""
-
-    private let compactThreshold: CGFloat = 280
-
-    var body: some View {
-        GeometryReader { geometry in
-            let isCompact = geometry.size.width < compactThreshold
-
-            VStack(spacing: 0) {
-                // Header with back button
-                callHeader
-
-                // Content
-                contentArea
-
-                Divider()
-
-                // Controls
-                controlBar(isCompact: isCompact)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    // MARK: - Call Header
-
-    private var callHeader: some View {
-        HStack {
-            Button {
-                viewModel.goBackToCallsList()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Calls")
-                        .font(.system(size: 13))
-                }
-                .foregroundColor(.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-    }
-
-    // MARK: - Content Area
-
-    private var contentArea: some View {
-        VStack(spacing: 12) {
-            Spacer(minLength: 16)
-
-            // Avatar
-            avatar
-
-            // Name
-            Text(displayName)
-                .font(.system(size: 17, weight: .semibold))
-                .lineLimit(1)
-
-            // Status or Duration
-            statusLabel
-
-            // DTMF History
-            if !dtmfHistory.isEmpty {
-                dtmfHistoryLabel
-            }
-
-            Spacer(minLength: 16)
-        }
-        .padding(.horizontal, 20)
-    }
-
-    private var avatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.accentColor, Color.accentColor.opacity(0.75)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 64, height: 64)
-
-            Text(initials)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
-                .foregroundColor(.white)
-        }
-    }
-
-    private var statusLabel: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-
-            if isConnected {
-                Text(viewModel.callDurationFormatted)
-                    .font(.system(size: 13, design: .monospaced))
-            } else {
-                Text(statusText)
-                    .font(.system(size: 13))
-            }
-        }
-        .foregroundColor(.secondary)
-    }
-
-    private var dtmfHistoryLabel: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(dtmfHistory)
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    .lineLimit(1)
-                    .id("dtmf")
-            }
-            .onChange(of: dtmfHistory) { _ in
-                // Auto-scroll to show most recent digits
-                proxy.scrollTo("dtmf", anchor: .trailing)
-            }
-        }
-        .frame(maxWidth: 200)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-    }
-
-    // MARK: - Control Bar
-
-    private func controlBar(isCompact: Bool) -> some View {
-        HStack(spacing: 8) {
-            if isIncoming {
-                incomingControls(isCompact: isCompact)
-            } else {
-                activeControls(isCompact: isCompact)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-    }
-
-    private func incomingControls(isCompact: Bool) -> some View {
-        HStack(spacing: 12) {
-            Spacer()
-
-            Button {
-                viewModel.hangupCall()
-            } label: {
-                ControlLabel("Decline", icon: "phone.down.fill", isCompact: isCompact)
-            }
-            .buttonStyle(TintedButtonStyle(color: .red))
-            .keyboardShortcut(.escape, modifiers: [])
-
-            Button {
-                viewModel.answerCall()
-            } label: {
-                ControlLabel("Answer", icon: "phone.fill", isCompact: isCompact)
-            }
-            .buttonStyle(TintedButtonStyle(color: .green))
-            .keyboardShortcut(.return, modifiers: [])
-
-            Spacer()
-        }
-    }
-
-    private func activeControls(isCompact: Bool) -> some View {
-        HStack(spacing: 6) {
-            // Mute
-            ToolbarToggle(
-                isOn: viewModel.isMuted,
-                icon: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
-                action: { viewModel.toggleMute() }
-            )
-            .keyboardShortcut("m", modifiers: .command)
-            .help("Mute (⌘M)")
-
-            // Hold
-            ToolbarToggle(
-                isOn: viewModel.isOnHold,
-                icon: viewModel.isOnHold ? "play.fill" : "pause.fill",
-                action: { viewModel.toggleHold() }
-            )
-            .keyboardShortcut("h", modifiers: .command)
-            .help("Hold (⌘H)")
-
-            // Keypad
-            ToolbarToggle(
-                isOn: showDTMFKeypad,
-                icon: "circle.grid.3x3.fill",
-                action: { showDTMFKeypad.toggle() }
-            )
-            .keyboardShortcut("k", modifiers: .command)
-            .help("Keypad (⌘K)")
-            .popover(isPresented: $showDTMFKeypad, arrowEdge: .top) {
-                DTMFPopover(history: $dtmfHistory) { digit in
-                    dtmfHistory.append(digit)
-                    viewModel.sendDTMF(digit)
-                }
-            }
-
-            // Audio device picker
-            ToolbarToggle(
-                isOn: showAudioDevicePicker,
-                icon: "speaker.wave.2.fill",
-                action: {
-                    viewModel.refreshAudioDevices()
-                    showAudioDevicePicker.toggle()
-                }
-            )
-            .keyboardShortcut("a", modifiers: .command)
-            .help("Audio Devices (⌘A)")
-            .popover(isPresented: $showAudioDevicePicker, arrowEdge: .top) {
-                AudioDevicePickerView(
-                    viewModel: viewModel,
-                    isPresented: $showAudioDevicePicker
-                )
-            }
-
-            Spacer()
-
-            // End
-            Button {
-                viewModel.hangupCall()
-            } label: {
-                ControlLabel("End", icon: "phone.down.fill", isCompact: isCompact)
-            }
-            .buttonStyle(TintedButtonStyle(color: .red))
-            .keyboardShortcut(.escape, modifiers: [])
-            .help("End Call (Esc)")
-        }
-    }
-
-    // MARK: - Computed Properties
 
     private var isIncoming: Bool {
         if case .incoming = viewModel.callState { return true }
         return false
     }
 
+    var body: some View {
+        Group {
+            if isIncoming {
+                IncomingCallView(viewModel: viewModel)
+            } else {
+                InCallView(viewModel: viewModel)
+            }
+        }
+        .navigationTitle(viewModel.remotePartyLabels.title)
+        .navigationSubtitle(viewModel.activeAccount.map { "on \($0.title)" } ?? "")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    viewModel.goBackToCallsList()
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                }
+                .keyboardShortcut("[", modifiers: .command)
+                .help("Back to recents and calls (⌘[)")
+            }
+        }
+    }
+}
+
+// MARK: - Caller Avatar
+
+/// Circle with the caller's initials, or a person symbol for numbers.
+struct CallerAvatar: View {
+    let title: String
+    let size: CGFloat
+
+    private var initials: String? {
+        guard title.contains(where: { $0.isLetter }) else { return nil }
+        let words = title.split(separator: " ").filter { $0.first?.isLetter == true }
+        let letters = words.prefix(2).compactMap(\.first)
+        return letters.isEmpty ? nil : String(letters).uppercased()
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.linearGradient(
+                    colors: [Color(nsColor: .systemGray), Color(nsColor: .darkGray)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+
+            if let initials {
+                Text(initials)
+                    .font(.system(size: size * 0.38, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.45))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Incoming Call
+
+/// Full-window screen for a ringing call with Answer and Decline.
+///
+/// Return answers and Escape declines. When another call is connected,
+/// answering puts it on hold.
+struct IncomingCallView: View {
+    @ObservedObject var viewModel: AppViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPulsing = false
+
+    private var labels: (title: String, subtitle: String?) { viewModel.remotePartyLabels }
+
+    private var hasOtherConnectedCall: Bool {
+        viewModel.activeCalls.values.contains {
+            $0.id != viewModel.activeCallID && ($0.state == .established || $0.state == .held)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
+
+            ZStack {
+                if !reduceMotion {
+                    Circle()
+                        .stroke(Color.green.opacity(0.35), lineWidth: 2)
+                        .frame(width: 112, height: 112)
+                        .scaleEffect(isPulsing ? 1.25 : 1)
+                        .opacity(isPulsing ? 0 : 1)
+                        .accessibilityHidden(true)
+                }
+                CallerAvatar(title: labels.title, size: 104)
+            }
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+                    isPulsing = true
+                }
+            }
+
+            VStack(spacing: 6) {
+                Text(labels.title)
+                    .font(.title.weight(.semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+
+                if let subtitle = labels.subtitle {
+                    Text(subtitle)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Text(incomingDescription)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
+            .padding(.top, 20)
+            .padding(.horizontal, 20)
+            .accessibilityElement(children: .combine)
+
+            if hasOtherConnectedCall {
+                Label("Answering puts your current call on hold.", systemImage: "pause.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 12)
+            }
+
+            Spacer(minLength: 24)
+
+            HStack(spacing: 40) {
+                CallActionButton(
+                    title: "Decline",
+                    systemImage: "phone.down.fill",
+                    tint: .red
+                ) {
+                    viewModel.hangupCall()
+                }
+                .keyboardShortcut(.cancelAction)
+                .help("Decline (Esc)")
+
+                CallActionButton(
+                    title: "Answer",
+                    systemImage: "phone.fill",
+                    tint: .green
+                ) {
+                    viewModel.answerCall()
+                }
+                .keyboardShortcut(.defaultAction)
+                .help("Answer (Return)")
+            }
+            .padding(.bottom, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var incomingDescription: String {
+        "Incoming Call"
+    }
+}
+
+/// Large round call button with a caption, used for Answer, Decline and End.
+struct CallActionButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.title2)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(tint))
+                    .foregroundStyle(.white)
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+// MARK: - In Call
+
+/// Screen for a call that is connecting or connected.
+struct InCallView: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var showKeypad = false
+    @State private var dtmfHistory = ""
+
+    private var labels: (title: String, subtitle: String?) { viewModel.remotePartyLabels }
+
     private var isConnected: Bool {
         viewModel.callState == .established || viewModel.callState == .held
     }
 
-    private var displayName: String {
-        let raw = viewModel.remotePartyName ?? viewModel.remotePartyURI ?? "Unknown"
-        return PhoneNumberService.formatForDisplay(raw)
+    private var hasEnded: Bool {
+        if case .ended = viewModel.callState { return true }
+        return false
     }
 
-    private var initials: String {
-        let words = displayName.split(separator: " ")
-        if words.count >= 2 {
-            return String(words[0].prefix(1) + words[1].prefix(1)).uppercased()
-        }
-        return String(displayName.filter { $0.isLetter || $0.isNumber }.prefix(2)).uppercased()
+    /// Other calls ringing while this one is in progress.
+    private var waitingCalls: [AppViewModel.CallInfo] {
+        viewModel.activeCalls.values
+            .filter { $0.id != viewModel.activeCallID && $0.isIncomingRinging }
+            .sorted { $0.id.rawValue < $1.id.rawValue }
     }
 
-    private var statusColor: Color {
-        switch viewModel.callState {
-        case .outgoing, .early: return .orange
-        case .incoming, .established: return .green
-        case .held: return .yellow
-        case .idle, .ended: return .secondary
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(waitingCalls, id: \.id) { call in
+                CallWaitingBanner(call: call, viewModel: viewModel)
+            }
+
+            Spacer(minLength: 16)
+
+            CallerAvatar(title: labels.title, size: 80)
+
+            VStack(spacing: 4) {
+                Text(labels.title)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+
+                if let subtitle = labels.subtitle {
+                    Text(subtitle)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Text(statusText)
+                    .font(.title3.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
+
+                if !dtmfHistory.isEmpty {
+                    Text(dtmfHistory)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .accessibilityLabel("Keys sent: \(dtmfHistory)")
+                }
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 20)
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: 16)
+
+            controls
+                .disabled(hasEnded)
+                .padding(.bottom, 16)
+
+            CallActionButton(title: "End", systemImage: "phone.down.fill", tint: .red) {
+                viewModel.hangupCall()
+            }
+            .disabled(hasEnded)
+            .help("End Call (⌘D)")
+            .padding(.bottom, 28)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: viewModel.activeCallID) { _ in
+            dtmfHistory = ""
+            showKeypad = false
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 12) {
+            Toggle(isOn: Binding(get: { viewModel.isMuted }, set: { _ in viewModel.toggleMute() })) {
+                Label(viewModel.isMuted ? "Unmute" : "Mute", systemImage: viewModel.isMuted ? "mic.slash.fill" : "mic.fill")
+            }
+            .help("Mute (⌘U)")
+            .disabled(!isConnected)
+
+            Toggle(isOn: Binding(get: { viewModel.isOnHold }, set: { _ in viewModel.toggleHold() })) {
+                Label(viewModel.isOnHold ? "Resume" : "Hold", systemImage: "pause.fill")
+            }
+            .help("Hold (⌘R)")
+            .disabled(!isConnected)
+
+            Toggle(isOn: $showKeypad) {
+                Label("Keypad", systemImage: "circle.grid.3x3.fill")
+            }
+            .help("Keypad (⌘K)")
+            .keyboardShortcut("k")
+            .popover(isPresented: $showKeypad, arrowEdge: .bottom) {
+                KeypadView { key in
+                    dtmfHistory.append(key)
+                    viewModel.sendDTMF(key)
+                }
+                .padding(16)
+            }
+
+            AudioDeviceMenu(viewModel: viewModel)
+                .fixedSize()
+        }
+        .toggleStyle(.button)
+        .labelStyle(.iconOnly)
+        .controlSize(.large)
     }
 
     private var statusText: String {
         switch viewModel.callState {
-        case .idle: return "Idle"
-        case .outgoing: return "Calling..."
-        case .incoming: return "Incoming"
-        case .early: return "Ringing..."
-        case .established: return "Connected"
-        case .held: return "On Hold"
-        case .ended: return "Ended"
+        case .idle: return " "
+        case .outgoing: return "Calling…"
+        case .incoming: return "Incoming Call"
+        case .early: return "Ringing…"
+        case .established: return viewModel.callDurationFormatted
+        case .held: return "On Hold · \(viewModel.callDurationFormatted)"
+        case .ended(let reason): return Self.endedText(reason)
         }
     }
+
+    /// "Call Ended", or the reason when the call failed (e.g. "Busy").
+    private static func endedText(_ reason: String?) -> String {
+        guard let reason, !reason.isEmpty else { return "Call Ended" }
+        let lowered = reason.lowercased()
+        if lowered.contains("486") || lowered.contains("busy") { return "Busy" }
+        if lowered.contains("404") || lowered.contains("not found") { return "Number Not Found" }
+        if lowered.contains("480") || lowered.contains("unavailable") { return "Unavailable" }
+        if lowered.contains("603") || lowered.contains("decline") { return "Declined" }
+        if lowered.contains("408") || lowered.contains("timeout") { return "No Answer" }
+        if lowered.contains("488") || lowered.contains("not acceptable") { return "Call Not Supported" }
+        if lowered.contains("403") || lowered.contains("forbidden") { return "Call Not Allowed" }
+        return "Call Ended"
+    }
 }
 
-// MARK: - Control Label
+// MARK: - Call Waiting
 
-private struct ControlLabel: View {
-    let title: String
-    let icon: String
-    let isCompact: Bool
-
-    init(_ title: String, icon: String, isCompact: Bool) {
-        self.title = title
-        self.icon = icon
-        self.isCompact = isCompact
-    }
+/// Shown at the top of the in-call screen when another call rings.
+private struct CallWaitingBanner: View {
+    let call: AppViewModel.CallInfo
+    @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        if isCompact {
-            Image(systemName: icon)
-        } else {
-            Label(title, systemImage: icon)
-        }
-    }
-}
+        HStack(spacing: 10) {
+            CallerAvatar(title: call.labels.title, size: 32)
 
-// MARK: - Toolbar Toggle
-
-private struct ToolbarToggle: View {
-    let isOn: Bool
-    let icon: String
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 32, height: 24)
-                .foregroundColor(isOn ? .white : .primary)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isOn ? Color.accentColor : backgroundColor)
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-
-    private var backgroundColor: Color {
-        Color(nsColor: isHovered ? .controlColor : .controlBackgroundColor)
-    }
-}
-
-// MARK: - Tinted Button Style
-
-private struct TintedButtonStyle: ButtonStyle {
-    let color: Color
-    @State private var isHovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(color.opacity(configuration.isPressed ? 0.7 : (isHovered ? 0.85 : 1.0)))
-            )
-            .onHover { isHovered = $0 }
-    }
-}
-
-// MARK: - DTMF Popover
-
-private struct DTMFPopover: View {
-    @Binding var history: String
-    let onDigit: (String) -> Void
-
-    private let rows = [
-        ["1", "2", "3"],
-        ["4", "5", "6"],
-        ["7", "8", "9"],
-        ["*", "0", "#"]
-    ]
-
-    private let letters: [String: String] = [
-        "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL",
-        "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ"
-    ]
-
-    var body: some View {
-        VStack(spacing: 10) {
-            // Display - single line, scrollable, draggable
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(history.isEmpty ? "Enter digits" : history)
-                        .font(.system(size: 15, design: .monospaced))
-                        .foregroundColor(history.isEmpty ? .secondary : .primary)
-                        .lineLimit(1)
-                        .id("dtmfDisplay")
-                }
-                .onChange(of: history) { _ in
-                    proxy.scrollTo("dtmfDisplay", anchor: .trailing)
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.labels.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("Incoming call")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color(nsColor: .textBackgroundColor))
-            )
+            .accessibilityElement(children: .combine)
 
-            // Keypad
-            VStack(spacing: 6) {
-                ForEach(rows, id: \.self) { row in
-                    HStack(spacing: 6) {
-                        ForEach(row, id: \.self) { digit in
-                            DTMFKey(digit: digit, letters: letters[digit]) {
-                                onDigit(digit)
-                            }
-                        }
-                    }
-                }
-            }
+            Spacer()
+
+            Button("Decline") { viewModel.declineCall(call.id) }
+            Button("Answer") { viewModel.answerCall(call.id) }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
         }
+        .controlSize(.small)
         .padding(12)
-        .frame(width: 196)
-    }
-}
-
-// MARK: - DTMF Key
-
-private struct DTMFKey: View {
-    let digit: String
-    let letters: String?
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 1) {
-                Text(digit)
-                    .font(.system(size: 17, weight: .medium, design: .rounded))
-
-                if let letters = letters {
-                    Text(letters)
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 52, height: 40)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color(nsColor: isHovered ? .controlColor : .controlBackgroundColor))
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .background(.green.opacity(0.12))
     }
 }
 
@@ -465,10 +398,5 @@ private struct DTMFKey: View {
 
 #Preview("Call") {
     ActiveCallView(viewModel: AppViewModel.shared)
-        .frame(width: 300, height: 340)
-}
-
-#Preview("Compact") {
-    ActiveCallView(viewModel: AppViewModel.shared)
-        .frame(width: 220, height: 340)
+        .frame(width: 380, height: 560)
 }

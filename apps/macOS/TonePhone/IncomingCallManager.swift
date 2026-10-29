@@ -2,15 +2,19 @@
 //  IncomingCallManager.swift
 //  TonePhone
 //
-//  Manages incoming call alerts, notifications, and ringtone.
+//  Rings for incoming calls and alerts the user when TonePhone is in the background.
 //
 
 import AppKit
 import AVFoundation
 import UserNotifications
 
-/// Manages incoming call alerts including system notifications,
-/// ringtone playback, and window focus.
+/// Manages incoming call alerts: ringtone, Dock attention, and notifications.
+///
+/// When TonePhone is frontmost, the call screen in the main window is the
+/// alert. When it is in the background, a notification with Answer and
+/// Decline actions is posted and the Dock icon bounces. The app never
+/// activates itself, so a call can't steal keyboard focus from the user.
 @MainActor
 final class IncomingCallManager: NSObject, ObservableObject {
     /// Shared instance for app-wide use.
@@ -19,24 +23,39 @@ final class IncomingCallManager: NSObject, ObservableObject {
     /// Whether a ringtone is currently playing.
     @Published private(set) var isRinging = false
 
-    /// Audio player for ringtone.
+    /// Answer a call from its notification.
+    var onAnswer: ((CallID) -> Void)?
+
+    /// Decline a call from its notification.
+    var onDecline: ((CallID) -> Void)?
+
+    /// Show a call after the user clicks its notification.
+    var onShowCall: ((CallID) -> Void)?
+
+    private enum Identifier {
+        static let incomingCategory = "INCOMING_CALL"
+        static let answerAction = "ANSWER"
+        static let declineAction = "DECLINE"
+        static let callIDKey = "callID"
+
+        static func incoming(_ callID: CallID) -> String { "incoming-\(callID.rawValue)" }
+    }
+
+    /// Calls that are currently ringing.
+    private var ringingCalls: Set<CallID> = []
+
+    /// Audio player for the ringtone.
     private var audioPlayer: AVAudioPlayer?
 
-    /// Current notification identifier for cleanup.
-    private var currentNotificationID: String?
-
-    /// Callback for answering call from notification.
-    var onAnswer: (() -> Void)?
-
-    /// Callback for declining call from notification.
-    var onDecline: (() -> Void)?
+    /// Dock bounce request, cancelled when ringing stops.
+    private var attentionRequest: Int?
 
     /// Whether notifications have been configured.
     private var notificationsConfigured = false
 
     private override init() {
         super.init()
-        // Don't access UNUserNotificationCenter here - app may not be fully initialized
+        // UNUserNotificationCenter is configured after launch
     }
 
     // MARK: - Notification Setup
@@ -49,24 +68,22 @@ final class IncomingCallManager: NSObject, ObservableObject {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
 
-        // Define notification actions
         let answerAction = UNNotificationAction(
-            identifier: "ANSWER",
+            identifier: Identifier.answerAction,
             title: "Answer",
             options: [.foreground]
         )
         let declineAction = UNNotificationAction(
-            identifier: "DECLINE",
+            identifier: Identifier.declineAction,
             title: "Decline",
             options: [.destructive]
         )
 
-        // Create category with actions
         let callCategory = UNNotificationCategory(
-            identifier: "INCOMING_CALL",
+            identifier: Identifier.incomingCategory,
             actions: [answerAction, declineAction],
             intentIdentifiers: [],
-            options: [.customDismissAction]
+            options: []
         )
 
         center.setNotificationCategories([callCategory])
@@ -74,47 +91,54 @@ final class IncomingCallManager: NSObject, ObservableObject {
 
     /// Requests notification permission from the user. Call after app has launched.
     func requestNotificationPermission() {
-        // Defer to next run loop to ensure app is fully initialized
         DispatchQueue.main.async { [weak self] in
             self?.setupNotificationsIfNeeded()
-
-            UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]
-            ) { granted, error in
-                if let error = error {
-                    print("IncomingCallManager: Notification permission error: \(error)")
-                } else {
-                    print("IncomingCallManager: Notification permission granted: \(granted)")
-                }
-            }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
         }
     }
 
-    // MARK: - Incoming Call Handling
+    // MARK: - Call Events
 
-    /// Called when an incoming call is received.
+    /// Starts ringing for an incoming call.
     /// - Parameters:
-    ///   - callerName: Display name of the caller
-    ///   - callerURI: SIP URI of the caller
-    func handleIncomingCall(callerName: String?, callerURI: String?) {
-        let displayName = callerName ?? callerURI ?? "Unknown Caller"
-
-        // Start ringtone
+    ///   - callID: The ringing call.
+    ///   - title: Caller name or formatted number.
+    ///   - subtitle: Formatted number when `title` is a name.
+    ///   - accountName: The account receiving the call.
+    func handleIncomingCall(callID: CallID, title: String, subtitle: String?, accountName: String?) {
+        ringingCalls.insert(callID)
         startRingtone()
 
-        // Bring app to front
-        bringAppToFront()
-
-        // Post notification if app is not active
-        if !NSApp.isActive {
-            postIncomingCallNotification(caller: displayName)
+        if NSApp.isActive {
+            // Frontmost: the main window shows the call; reopen it if it was closed
+            MainWindow.show()
+            return
         }
+
+        attentionRequest = NSApp.requestUserAttention(.criticalRequest)
+        postIncomingCallNotification(callID: callID, title: title, subtitle: subtitle, accountName: accountName)
     }
 
-    /// Called when an incoming call ends (answered, declined, or cancelled).
-    func handleCallEnded() {
+    /// The call was answered: stop ringing for it.
+    func handleCallAnswered(_ callID: CallID) {
+        stopAlerting(for: callID)
+    }
+
+    /// The call ended (declined, cancelled by the caller, or hung up).
+    func handleCallEnded(_ callID: CallID) {
+        stopAlerting(for: callID)
+    }
+
+    private func stopAlerting(for callID: CallID) {
+        ringingCalls.remove(callID)
+        removeNotification(identifier: Identifier.incoming(callID))
+
+        guard ringingCalls.isEmpty else { return }
         stopRingtone()
-        removeNotification()
+        if let attentionRequest {
+            NSApp.cancelUserAttentionRequest(attentionRequest)
+            self.attentionRequest = nil
+        }
     }
 
     // MARK: - Ringtone
@@ -122,22 +146,17 @@ final class IncomingCallManager: NSObject, ObservableObject {
     private func startRingtone() {
         guard !isRinging else { return }
 
-        // Try to load system ringtone or bundled sound
-        if let soundURL = findRingtoneURL() {
-            do {
-                audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
-                audioPlayer?.numberOfLoops = -1 // Loop indefinitely
-                audioPlayer?.volume = 0.7
-                audioPlayer?.play()
-                isRinging = true
-            } catch {
-                print("IncomingCallManager: Failed to play ringtone: \(error)")
-                // Fallback to system sound
-                playSystemSound()
-            }
-        } else {
-            playSystemSound()
+        guard let soundURL = findRingtoneURL(),
+              let player = try? AVAudioPlayer(contentsOf: soundURL) else {
+            NSSound.beep()
+            return
         }
+
+        player.numberOfLoops = -1
+        player.volume = 0.7
+        player.play()
+        audioPlayer = player
+        isRinging = true
     }
 
     private func stopRingtone() {
@@ -147,106 +166,54 @@ final class IncomingCallManager: NSObject, ObservableObject {
     }
 
     private func findRingtoneURL() -> URL? {
-        // First check bundle for custom ringtone
-        if let bundleURL = Bundle.main.url(forResource: "ringtone", withExtension: "aiff") {
-            return bundleURL
-        }
-        if let bundleURL = Bundle.main.url(forResource: "ringtone", withExtension: "mp3") {
-            return bundleURL
+        for ext in ["aiff", "caf", "mp3"] {
+            if let bundleURL = Bundle.main.url(forResource: "ringtone", withExtension: ext) {
+                return bundleURL
+            }
         }
 
-        // Use the user-selected ringtone from settings
         let selectedRingtone = SettingsStore.shared.selectedRingtone
-        let selectedPath = "/System/Library/Sounds/\(selectedRingtone)"
-        if FileManager.default.fileExists(atPath: selectedPath) {
-            return URL(fileURLWithPath: selectedPath)
-        }
-
-        // Fall back to other system sounds
-        let fallbacks = ["Ping.aiff", "Glass.aiff", "Sosumi.aiff"]
-        for name in fallbacks where name != selectedRingtone {
-            let path = "/System/Library/Sounds/\(name)"
-            if FileManager.default.fileExists(atPath: path) {
-                return URL(fileURLWithPath: path)
-            }
-        }
-
-        return nil
+        let candidates = [selectedRingtone, "Ping.aiff", "Glass.aiff", "Sosumi.aiff"]
+        return candidates
+            .map { URL(fileURLWithPath: "/System/Library/Sounds/\($0)") }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    private func playSystemSound() {
-        // Use NSSound for system alert
-        NSSound.beep()
-        isRinging = true
+    // MARK: - Notifications
 
-        // Schedule repeated beeps
-        scheduleRepeatedBeeps()
-    }
-
-    private var beepTimer: Timer?
-
-    private func scheduleRepeatedBeeps() {
-        beepTimer?.invalidate()
-        beepTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard self?.isRinging == true else {
-                self?.beepTimer?.invalidate()
-                self?.beepTimer = nil
-                return
-            }
-            NSSound.beep()
-        }
-    }
-
-    // MARK: - System Notification
-
-    private func postIncomingCallNotification(caller: String) {
-        // Ensure notifications are configured before posting
+    private func postIncomingCallNotification(callID: CallID, title: String, subtitle: String?, accountName: String?) {
         setupNotificationsIfNeeded()
 
         let content = UNMutableNotificationContent()
-        content.title = "Incoming Call"
-        content.body = caller
+        content.title = title
+        content.subtitle = subtitle ?? ""
+        content.body = accountName.map { "Incoming call on \($0)" } ?? "Incoming call"
+        content.categoryIdentifier = Identifier.incomingCategory
+        content.userInfo = [Identifier.callIDKey: callID.rawValue]
+        // The ringtone is already playing; avoid a second sound
+
+        let request = UNNotificationRequest(identifier: Identifier.incoming(callID), content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
+    }
+
+    /// Notifies the user about a call they didn't answer.
+    func postMissedCallNotification(title: String) {
+        guard !NSApp.isActive else { return }
+        setupNotificationsIfNeeded()
+
+        let content = UNMutableNotificationContent()
+        content.title = "Missed Call"
+        content.body = title
         content.sound = .default
-        content.categoryIdentifier = "INCOMING_CALL"
-        content.interruptionLevel = .timeSensitive
 
-        let notificationID = UUID().uuidString
-        currentNotificationID = notificationID
-
-        let request = UNNotificationRequest(
-            identifier: notificationID,
-            content: content,
-            trigger: nil // Deliver immediately
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("IncomingCallManager: Failed to post notification: \(error)")
-            }
-        }
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
     }
 
-    private func removeNotification() {
-        if let notificationID = currentNotificationID {
-            UNUserNotificationCenter.current().removeDeliveredNotifications(
-                withIdentifiers: [notificationID]
-            )
-            UNUserNotificationCenter.current().removePendingNotificationRequests(
-                withIdentifiers: [notificationID]
-            )
-            currentNotificationID = nil
-        }
-    }
-
-    // MARK: - Window Management
-
-    private func bringAppToFront() {
-        NSApp.activate(ignoringOtherApps: true)
-
-        // Also bring the main window to front
-        if let window = NSApp.mainWindow ?? NSApp.windows.first {
-            window.makeKeyAndOrderFront(nil)
-        }
+    private func removeNotification(identifier: String) {
+        let center = UNUserNotificationCenter.current()
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 }
 
@@ -258,8 +225,8 @@ extension IncomingCallManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // Show notification even when app is in foreground
-        completionHandler([.banner, .sound])
+        // When TonePhone is frontmost the call screen is already showing
+        completionHandler([])
     }
 
     nonisolated func userNotificationCenter(
@@ -267,15 +234,27 @@ extension IncomingCallManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        Task { @MainActor in
-            switch response.actionIdentifier {
-            case "ANSWER":
-                self.onAnswer?()
-            case "DECLINE", UNNotificationDismissActionIdentifier:
-                self.onDecline?()
-            default:
-                // Default tap - bring app to front
-                self.bringAppToFront()
+        let rawID = response.notification.request.content.userInfo[Identifier.callIDKey] as? UInt32
+        let action = response.actionIdentifier
+
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let rawID else { return }
+                let callID = CallID(rawValue: rawID)
+                switch action {
+                case Identifier.answerAction:
+                    MainWindow.show()
+                    self.onAnswer?(callID)
+                case Identifier.declineAction:
+                    self.onDecline?(callID)
+                case UNNotificationDefaultActionIdentifier:
+                    NSApp.activate(ignoringOtherApps: true)
+                    MainWindow.show()
+                    self.onShowCall?(callID)
+                default:
+                    // Dismissing the banner leaves the call ringing
+                    break
+                }
             }
         }
 

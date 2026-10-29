@@ -2,100 +2,77 @@
 //  RingtonePickerView.swift
 //  TonePhone
 //
-//  Ringtone selection with preview playback.
+//  Ringtone pop-up button with a preview button.
 //
 
 import AVFoundation
 import SwiftUI
 
-/// A ringtone entry with file info.
-private struct Ringtone: Identifiable {
-    let id: String  // filename
-    let name: String  // display name (without .aiff)
-    let path: String
-}
-
 struct RingtonePickerView: View {
     @Binding var selectedRingtone: String
-    @State private var ringtones: [Ringtone] = []
-    @State private var playingID: String?
+    @State private var ringtones: [String] = []
     @State private var player: AVAudioPlayer?
+    @State private var isPlaying = false
+
+    private static let soundsDirectory = "/System/Library/Sounds"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(ringtones) { ringtone in
-                HStack(spacing: 10) {
-                    Image(systemName: selectedRingtone == ringtone.id ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(selectedRingtone == ringtone.id ? .accentColor : .secondary)
-
-                    Text(ringtone.name)
-                        .font(.system(size: 13))
-
-                    Spacer()
-
-                    Button {
-                        togglePreview(ringtone)
-                    } label: {
-                        Image(systemName: playingID == ringtone.id ? "stop.fill" : "play.fill")
-                            .font(.system(size: 10))
+        LabeledContent("Ringtone") {
+            HStack {
+                Picker("Ringtone", selection: $selectedRingtone) {
+                    ForEach(ringtones, id: \.self) { file in
+                        Text(Self.displayName(for: file)).tag(file)
                     }
-                    .buttonStyle(.borderless)
-                    .foregroundColor(.accentColor)
-                    .accessibilityLabel(playingID == ringtone.id ? "Stop \(ringtone.name)" : "Preview \(ringtone.name)")
                 }
-                .padding(.vertical, 3)
-                .padding(.horizontal, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(selectedRingtone == ringtone.id ? Color.accentColor.opacity(0.1) : Color.clear)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    stopPreview()
-                    selectedRingtone = ringtone.id
+                .labelsHidden()
+                .fixedSize()
+
+                Button {
+                    isPlaying ? stopPreview() : startPreview()
+                } label: {
+                    Label(isPlaying ? "Stop" : "Play", systemImage: isPlaying ? "stop.fill" : "play.fill")
+                        .labelStyle(.iconOnly)
                 }
+                .help(isPlaying ? "Stop preview" : "Play ringtone")
             }
         }
         .onAppear { loadRingtones() }
         .onDisappear { stopPreview() }
+        .onChange(of: selectedRingtone) { _ in
+            if isPlaying { startPreview() }
+        }
+    }
+
+    private static func displayName(for file: String) -> String {
+        (file as NSString).deletingPathExtension
     }
 
     private func loadRingtones() {
-        let dir = "/System/Library/Sounds"
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
-
-        ringtones = files
-            .filter { $0.hasSuffix(".aiff") }
-            .sorted()
-            .map { filename in
-                Ringtone(
-                    id: filename,
-                    name: String(filename.dropLast(5)),
-                    path: "\(dir)/\(filename)"
-                )
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: Self.soundsDirectory)) ?? []
+        ringtones = files.filter { $0.hasSuffix(".aiff") }.sorted()
+        if !ringtones.contains(selectedRingtone), let first = ringtones.first {
+            ringtones.insert(selectedRingtone, at: 0)
+            if !FileManager.default.fileExists(atPath: "\(Self.soundsDirectory)/\(selectedRingtone)") {
+                ringtones.removeFirst()
+                selectedRingtone = first
             }
+        }
     }
 
-    private func togglePreview(_ ringtone: Ringtone) {
-        if playingID == ringtone.id {
-            stopPreview()
-        } else {
-            stopPreview()
-            do {
-                player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: ringtone.path))
-                player?.volume = 0.7
-                player?.play()
-                playingID = ringtone.id
+    private func startPreview() {
+        stopPreview()
+        let url = URL(fileURLWithPath: "\(Self.soundsDirectory)/\(selectedRingtone)")
+        guard let newPlayer = try? AVAudioPlayer(contentsOf: url) else { return }
+        newPlayer.volume = 0.7
+        newPlayer.numberOfLoops = 2
+        newPlayer.play()
+        player = newPlayer
+        isPlaying = true
 
-                let duration = player?.duration ?? 2.0
-                let expectedID = ringtone.id
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                    if playingID == expectedID {
-                        playingID = nil
-                    }
-                }
-            } catch {
-                // Silently fail — preview is non-critical
+        let duration = newPlayer.duration * 3
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak newPlayer] in
+            if newPlayer != nil, player === newPlayer {
+                stopPreview()
             }
         }
     }
@@ -103,18 +80,6 @@ struct RingtonePickerView: View {
     private func stopPreview() {
         player?.stop()
         player = nil
-        playingID = nil
+        isPlaying = false
     }
-}
-
-#Preview("Ringtone Picker") {
-    struct Wrapper: View {
-        @State private var selected = "Ping.aiff"
-        var body: some View {
-            RingtonePickerView(selectedRingtone: $selected)
-                .padding()
-                .frame(width: 300)
-        }
-    }
-    return Wrapper()
 }

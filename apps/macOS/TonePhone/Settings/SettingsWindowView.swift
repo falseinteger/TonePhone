@@ -2,127 +2,49 @@
 //  SettingsWindowView.swift
 //  TonePhone
 //
-//  Apple System Settings style window with sidebar navigation.
+//  Settings window with toolbar panes, as the macOS HIG describes for app settings.
 //
 
 import SwiftUI
 
 extension Notification.Name {
-    static let showAboutSettings = Notification.Name("com.tonephone.showAboutSettings")
-    static let showLicensesSettings = Notification.Name("com.tonephone.showLicensesSettings")
     static let accountSettingsChanged = Notification.Name("com.tonephone.accountSettingsChanged")
 }
 
-/// Settings category for sidebar navigation.
-enum SettingsCategory: String, CaseIterable, Identifiable {
+/// A pane in the Settings window.
+enum SettingsPane: String, CaseIterable, Identifiable {
     case general
-    case audio
     case accounts
-    case permissions
+    case audio
     case advanced
-    case about
-    case licenses
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .general: return "General"
-        case .audio: return "Audio"
-        case .accounts: return "Accounts"
-        case .permissions: return "Permissions"
-        case .advanced: return "Advanced"
-        case .about: return "About"
-        case .licenses: return "Licenses"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .general: return "gearshape"
-        case .audio: return "speaker.wave.2"
-        case .accounts: return "person.2"
-        case .permissions: return "hand.raised"
-        case .advanced: return "slider.horizontal.3"
-        case .about: return "info.circle"
-        case .licenses: return "doc.text"
-        }
-    }
 }
 
-/// Main settings window view with Apple System Settings style sidebar navigation.
+/// The Settings window. Each pane is a toolbar item; the window title
+/// follows the selected pane and the last pane is restored on reopen.
 struct SettingsWindowView: View {
-    /// Pending category to select when the window appears (set before opening).
-    static var pendingCategory: SettingsCategory?
-
-    @State private var selectedCategory: SettingsCategory? = .general
+    @AppStorage("settings.selectedPane") private var selectedPane: SettingsPane = .general
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
-        }
-        .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 650, minHeight: 450)
-        .frame(idealWidth: 750, idealHeight: 550)
-        .toolbar(.hidden)
-        .onAppear {
-            if let pending = Self.pendingCategory {
-                selectedCategory = pending
-                Self.pendingCategory = nil
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showAboutSettings)) { _ in
-            selectedCategory = .about
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showLicensesSettings)) { _ in
-            selectedCategory = .licenses
-        }
-    }
+        TabView(selection: $selectedPane) {
+            GeneralSettingsView()
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsPane.general)
 
-    // MARK: - Sidebar
+            AccountsSettingsView()
+                .tabItem { Label("Accounts", systemImage: "at") }
+                .tag(SettingsPane.accounts)
 
-    private var sidebar: some View {
-        List(SettingsCategory.allCases, selection: $selectedCategory) { category in
-            Label {
-                Text(category.title)
-            } icon: {
-                Image(systemName: category.icon)
-                    .foregroundColor(.accentColor)
-            }
-            .tag(category)
+            AudioSettingsView()
+                .tabItem { Label("Audio", systemImage: "speaker.wave.2") }
+                .tag(SettingsPane.audio)
+
+            AdvancedSettingsView()
+                .tabItem { Label("Advanced", systemImage: "gearshape.2") }
+                .tag(SettingsPane.advanced)
         }
-        .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
-    }
-
-    // MARK: - Detail
-
-    @ViewBuilder
-    private var detail: some View {
-        if let category = selectedCategory {
-            switch category {
-            case .general:
-                GeneralSettingsView()
-            case .audio:
-                AudioSettingsView()
-            case .accounts:
-                AccountsSettingsView()
-            case .permissions:
-                PermissionsSettingsView()
-            case .advanced:
-                AdvancedSettingsView()
-            case .about:
-                AboutSettingsView()
-            case .licenses:
-                LicensesSettingsView()
-            }
-        } else {
-            Text("Select a category")
-                .font(.title2)
-                .foregroundColor(.secondary)
-        }
+        .frame(width: 540)
     }
 }
 
